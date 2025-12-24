@@ -2,7 +2,7 @@
 
 > A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
 
-![ChatArchive Preview](https://via.placeholder.com/800x400?text=ChatArchive+Screenshot)
+![ChatArchive Preview]([https://github.com/jimjamscott22/ChatArchive/](https://github.com/jimjamscott22/ChatArchive/img/demoUI/800x400?text=ChatArchive+Screenshot)
 
 ## 🌟 Features
 
@@ -27,7 +27,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/chatarchive.git
+   git clone https://github.com/jimjamscott22/chatarchive.git
    cd chatarchive
    ```
 
@@ -138,7 +138,7 @@ Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTIN
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL-3.0 license
 
 ## 🙏 Acknowledgments
 
@@ -148,9 +148,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-Project Maintainer - [@yourusername](https://github.com/yourusername)
+Project Maintainer - [@jimjamscott22](https://github.com/jimjamscott22)
 
-Project Link: [https://github.com/yourusername/chatarchive](https://github.com/yourusername/chatarchive)
+Project Link: [https://github.com/jimjamscott22/chatarchive](https://github.com/jimjamscott22/chatarchive)
 
 ---
 
@@ -180,11 +180,11 @@ Project Link: [https://github.com/yourusername/chatarchive](https://github.com/y
 
 ## 🐛 Known Issues
 
-See the [Issues](https://github.com/yourusername/chatarchive/issues) page for current bugs and feature requests.
+See the [Issues](https://github.com/jimjamscott22/chatarchive/issues) page for current bugs and feature requests.
 
 ## 📊 Stats
 
-![GitHub stars](https://img.shields.io/github/stars/yourusername/chatarchive?style=social)
-![GitHub forks](https://img.shields.io/github/forks/yourusername/chatarchive?style=social)
-![GitHub issues](https://img.shields.io/github/issues/yourusername/chatarchive)
-![GitHub license](https://img.shields.io/github/license/yourusername/chatarchive)
+![GitHub stars](https://img.shields.io/github/stars/jimjamscott22/chatarchive?style=social)
+![GitHub forks](https://img.shields.io/github/forks/jimjamscott22/chatarchive?style=social)
+![GitHub issues](https://img.shields.io/github/issues/jimjamscott22/chatarchive)
+![GitHub license](https://img.shields.io/github/license/jimjamscott22/chatarchive)
