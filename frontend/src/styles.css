@@ -1,0 +1,93 @@
+:root {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  color: #101720;
+  background: #f4f1ec;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(135deg, #f4f1ec 0%, #f9efe2 45%, #f1f5f8 100%);
+}
+
+.app {
+  min-height: 100vh;
+  padding: 48px 20px 80px;
+}
+
+.hero {
+  max-width: 960px;
+  margin: 0 auto 40px;
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: 0 20px 60px rgba(18, 24, 32, 0.08);
+  display: grid;
+  gap: 20px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #3a4756;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card {
+  background: #f7f7f4;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid #e3dfd7;
+}
+
+.uploader {
+  border: 2px dashed #b8b2a7;
+  border-radius: 16px;
+  padding: 24px;
+  background: #fbfaf7;
+  display: grid;
+  gap: 12px;
+}
+
+.button {
+  background: #111827;
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.status {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #eef6f0;
+  color: #14532d;
+}
+
+.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 24px;
+  }
+}

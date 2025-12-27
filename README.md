@@ -23,6 +23,19 @@
 - **Python** (v3.10 or higher)
 - **npm** or **yarn**
 
+### Current Status
+
+This repo now includes a minimal FastAPI + React scaffold so you can import
+ChatGPT `conversations.json` exports and store them locally in SQLite. Claude
+and other importers are planned next.
+
+### Next Steps
+
+- Parse and normalize ChatGPT messages into separate tables (conversations, messages, participants).
+- Add a conversation list/search endpoint and UI to browse imports.
+- Add a Claude importer stub + selector in the upload form.
+- Wire environment-driven config for API URL and allowed CORS origins.
+
 ### Installation
 
 1. **Clone the repository**
