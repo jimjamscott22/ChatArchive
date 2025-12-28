@@ -5,13 +5,15 @@ from datetime import datetime
 from typing import Any
 
 
-def parse_chatgpt_export(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    conversations = payload.get("conversations")
+def parse_chatgpt_export(payload: Any) -> list[dict[str, Any]]:
+    conversations = None
+    if isinstance(payload, dict):
+        conversations = payload.get("conversations")
+    elif isinstance(payload, list):
+        conversations = payload
+
     if conversations is None:
-        if isinstance(payload, list):
-            conversations = payload
-        else:
-            raise ValueError("Unrecognized ChatGPT export format")
+        raise ValueError("Unrecognized ChatGPT export format")
 
     parsed = []
     for item in conversations:

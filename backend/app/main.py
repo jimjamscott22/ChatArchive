@@ -39,7 +39,7 @@ async def import_chatgpt(
 
     raw = await file.read()
     try:
-        payload: dict[str, Any] = json.loads(raw)
+        payload: Any = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
 
