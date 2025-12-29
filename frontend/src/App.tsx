@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings } from "lucide-react";
 
 const API_URL = "http://localhost:8000";
 
@@ -25,12 +25,35 @@ type ConversationDetail = Conversation & {
   messages: Message[];
 };
 
+type ImportHistory = {
+  id: number;
+  filename: string;
+  source_location?: string | null;
+  source_type: string;
+  file_format: string;
+  status: string;
+  created_at: string;
+  imported_count: number;
+  error_message?: string | null;
+};
+
+type ImportSettings = {
+  id: number;
+  allowed_formats: string;
+  default_format: string;
+  auto_merge_duplicates: boolean;
+  keep_separate: boolean;
+  skip_empty_conversations: boolean;
+  updated_at: string;
+};
+
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -150,6 +173,11 @@ export default function App() {
           Import
         </button>
 
+        <button className="settings-btn" onClick={() => setShowSettingsModal(true)}>
+          <Settings size={16} />
+          Settings
+        </button>
+
         <div className="conversations-list">
           {loading ? (
             <div className="loading">Loading...</div>
@@ -241,6 +269,11 @@ export default function App() {
       {showImportModal && (
         <ImportModal onClose={() => setShowImportModal(false)} onSuccess={loadConversations} />
       )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <SettingsModal onClose={() => setShowSettingsModal(false)} />
+      )}
     </div>
   );
 }
@@ -300,6 +333,254 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         </form>
         {status && <div className="status-success">{status}</div>}
         {error && <div className="status-error">{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<'import' | 'history'>('import');
+  const [settings, setSettings] = useState<ImportSettings | null>(null);
+  const [history, setHistory] = useState<ImportHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadSettings();
+    loadHistory();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/settings/import`);
+      const data = await response.json();
+      setSettings(data);
+      setLoading(false);
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+      setLoading(false);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      const response = await fetch(`${API_URL}/import/history?page_size=20`);
+      const data = await response.json();
+      setHistory(data.items || []);
+    } catch (error) {
+      console.error("Failed to load import history:", error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!settings) return;
+    
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_URL}/settings/import`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      
+      if (response.ok) {
+        const updated = await response.json();
+        setSettings(updated);
+      }
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateSetting = (key: keyof ImportSettings, value: any) => {
+    if (settings) {
+      setSettings({ ...settings, [key]: value });
+    }
+  };
+
+  const formatDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    return date.toLocaleString("en-US", { 
+      year: "numeric", 
+      month: "short", 
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors: { [key: string]: string } = {
+      success: '#10b981',
+      failure: '#ef4444',
+      partial: '#f59e0b',
+      processing: '#3b82f6'
+    };
+    return (
+      <span style={{
+        padding: '2px 8px',
+        borderRadius: '4px',
+        fontSize: '12px',
+        backgroundColor: colors[status] || '#6b7280',
+        color: 'white'
+      }}>
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Import & Export Settings</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="settings-tabs">
+          <button 
+            className={activeTab === 'import' ? 'active' : ''} 
+            onClick={() => setActiveTab('import')}
+          >
+            Import Settings
+          </button>
+          <button 
+            className={activeTab === 'history' ? 'active' : ''} 
+            onClick={() => setActiveTab('history')}
+          >
+            Import History
+          </button>
+        </div>
+
+        <div className="settings-content">
+          {loading ? (
+            <div className="loading">Loading...</div>
+          ) : activeTab === 'import' && settings ? (
+            <div className="settings-panel">
+              <div className="settings-section">
+                <h3>File Format Preferences</h3>
+                <div className="form-group">
+                  <label>Allowed Formats (comma-separated):</label>
+                  <input
+                    type="text"
+                    value={settings.allowed_formats}
+                    onChange={(e) => updateSetting('allowed_formats', e.target.value)}
+                    placeholder="json,csv,xml"
+                  />
+                  <small>Supported: json, csv, xml</small>
+                </div>
+                <div className="form-group">
+                  <label>Default Format:</label>
+                  <select
+                    value={settings.default_format}
+                    onChange={(e) => updateSetting('default_format', e.target.value)}
+                  >
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                    <option value="xml">XML</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <h3>Import Behavior</h3>
+                <div className="form-group checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={settings.auto_merge_duplicates}
+                      onChange={(e) => updateSetting('auto_merge_duplicates', e.target.checked)}
+                    />
+                    Auto-merge duplicate conversations
+                  </label>
+                  <small>Automatically merge imported conversations with existing ones if they have the same source ID</small>
+                </div>
+                <div className="form-group checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={settings.keep_separate}
+                      onChange={(e) => updateSetting('keep_separate', e.target.checked)}
+                    />
+                    Keep imported data separate
+                  </label>
+                  <small>Create separate archives for each import instead of merging with existing data</small>
+                </div>
+                <div className="form-group checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={settings.skip_empty_conversations}
+                      onChange={(e) => updateSetting('skip_empty_conversations', e.target.checked)}
+                    />
+                    Skip empty conversations
+                  </label>
+                  <small>Don't import conversations that have no messages</small>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button onClick={onClose}>Close</button>
+                <button 
+                  className="primary" 
+                  onClick={handleSaveSettings}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save Settings"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="history-panel">
+              <div className="history-header">
+                <h3>Past Imports</h3>
+                <p className="text-muted">View logs of all your imports</p>
+              </div>
+              {history.length === 0 ? (
+                <div className="empty">No import history yet</div>
+              ) : (
+                <div className="history-list">
+                  <table className="history-table">
+                    <thead>
+                      <tr>
+                        <th>Date & Time</th>
+                        <th>File Name</th>
+                        <th>Source</th>
+                        <th>Format</th>
+                        <th>Status</th>
+                        <th>Imported</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((item) => (
+                        <tr key={item.id}>
+                          <td>{formatDate(item.created_at)}</td>
+                          <td className="filename">{item.filename}</td>
+                          <td>{item.source_type}</td>
+                          <td>{item.file_format.toUpperCase()}</td>
+                          <td>{getStatusBadge(item.status)}</td>
+                          <td>{item.imported_count} conversations</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {history.some(h => h.error_message) && (
+                    <div className="error-details">
+                      <h4>Error Details</h4>
+                      {history.filter(h => h.error_message).map(h => (
+                        <div key={h.id} className="error-item">
+                          <strong>{h.filename}:</strong> {h.error_message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
