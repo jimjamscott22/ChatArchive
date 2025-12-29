@@ -1,26 +1,209 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Sparkles, Upload, Search, Menu, Sun } from "lucide-react";
 
-type ImportResult = {
+const API_URL = "http://localhost:8000";
+
+type Conversation = {
   id: number;
   source: string;
+  source_id?: string | null;
   title?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
+  message_count: number;
+};
+
+type Message = {
+  id: number;
+  role: string;
+  content: string;
+  created_at?: string | null;
+  order_index: number;
+};
+
+type ConversationDetail = Conversation & {
+  messages: Message[];
 };
 
 export default function App() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const response = await fetch(`${API_URL}/conversations?page_size=100`);
+      const data = await response.json();
+      setConversations(data.items || []);
+      setLoading(false);
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+      setLoading(false);
+    }
+  };
+
+  const loadConversation = async (id: number) => {
+    try {
+      const response = await fetch(`${API_URL}/conversations/${id}`);
+      const data = await response.json();
+      setSelectedConversation(data);
+    } catch (error) {
+      console.error("Failed to load conversation:", error);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      loadConversations();
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/conversations/search?q=${encodeURIComponent(query)}&page_size=100`
+      );
+      const data = await response.json();
+      setConversations(data.items || []);
+    } catch (error) {
+      console.error("Search failed:", error);
+    }
+  };
+
+  const extractTags = (title: string | null | undefined): string[] => {
+    if (!title) return [];
+    const words = title.split(/\s+/);
+    return words.slice(0, 2).filter(w => w.length > 3);
+  };
+
+  const formatDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+
+  const getPreview = (title: string | null | undefined): string => {
+    if (!title) return "Untitled conversation";
+    return title.length > 60 ? title.slice(0, 60) + "..." : title;
+  };
+
+  return (
+    <div className="app-container">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="logo">
+            <Sparkles size={20} />
+            <span>ChatArchive</span>
+          </div>
+          <button className="icon-btn" title="Toggle theme">
+            <Sun size={18} />
+          </button>
+        </div>
+
+        <div className="search-box">
+          <Search size={16} className="search-icon" />
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+        </div>
+
+        <button className="import-btn" onClick={() => setShowImportModal(true)}>
+          <Upload size={16} />
+          Import
+        </button>
+
+        <div className="conversations-list">
+          {loading ? (
+            <div className="loading">Loading...</div>
+          ) : conversations.length === 0 ? (
+            <div className="empty">No conversations yet</div>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.id}
+                className={`conversation-item ${selectedConversation?.id === conv.id ? "active" : ""}`}
+                onClick={() => loadConversation(conv.id)}
+              >
+                <div className="conv-header">
+                  <h3 className="conv-title">{conv.title || "Untitled"}</h3>
+                  <span className="conv-date">{formatDate(conv.created_at)}</span>
+                </div>
+                <p className="conv-preview">{getPreview(conv.title)}</p>
+                <div className="conv-tags">
+                  {extractTags(conv.title).map((tag, i) => (
+                    <span key={i} className="tag">{tag}</span>
+                  ))}
+                  <span className="tag source">{conv.source}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="main-content">
+        <header className="main-header">
+          <button className="icon-btn">
+            <Menu size={20} />
+          </button>
+          <h2 className="header-title">
+            {selectedConversation?.title || "Select a conversation"}
+          </h2>
+        </header>
+
+        <div className="content-area">
+          {!selectedConversation ? (
+            <div className="welcome-state">
+              <Sparkles size={48} className="welcome-icon" />
+              <h2>Welcome to ChatArchive</h2>
+              <p>Select a conversation from the sidebar or import your chat history to get started</p>
+            </div>
+          ) : (
+            <div className="conversation-view">
+              {selectedConversation.messages.map((msg) => (
+                <div key={msg.id} className={`message ${msg.role}`}>
+                  <div className="message-role">{msg.role === "user" ? "You" : "Assistant"}</div>
+                  <div className="message-content">
+                    {msg.content.split("\n").map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <ImportModal onClose={() => setShowImportModal(false)} onSuccess={loadConversations} />
+      )}
+    </div>
+  );
+}
+
+function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [count, setCount] = useState<number | null>(null);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setStatus(null);
-    setCount(null);
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!file) {
-      setError("Pick a ChatGPT conversations.json file to import.");
+      setError("Please select a file");
       return;
     }
 
@@ -29,65 +212,44 @@ export default function App() {
 
     try {
       setStatus("Uploading...");
-      const response = await fetch("http://localhost:8000/import/chatgpt", {
+      setError(null);
+      const response = await fetch(`${API_URL}/import/chatgpt`, {
         method: "POST",
-        body: formData
+        body: formData,
       });
 
       if (!response.ok) {
-        const body = await response.json();
-        throw new Error(body.detail ?? "Import failed");
+        throw new Error("Import failed");
       }
 
-      const data: ImportResult[] = await response.json();
-      setCount(data.length);
-      setStatus("Import complete!");
+      const data = await response.json();
+      setStatus(`Imported ${data.length} conversations!`);
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : "Import failed");
     }
   };
 
   return (
-    <div className="app">
-      <div className="hero">
-        <h1>ChatArchive</h1>
-        <p>
-          Bring your ChatGPT archives home. Upload an export and start building
-          a searchable vault of every conversation.
-        </p>
-        <div className="grid">
-          <div className="card">
-            <strong>Local-first</strong>
-            <p>Everything stays on your machine with SQLite storage.</p>
-          </div>
-          <div className="card">
-            <strong>Fast import</strong>
-            <p>Drop your JSON export to seed the archive instantly.</p>
-          </div>
-          <div className="card">
-            <strong>Search-ready</strong>
-            <p>Structure is ready for tags, filters, and analytics.</p>
-          </div>
-        </div>
-        <form className="uploader" onSubmit={handleSubmit}>
-          <div>
-            <label htmlFor="file">ChatGPT export (conversations.json)</label>
-          </div>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Import Conversations</h2>
+        <form onSubmit={handleSubmit}>
           <input
-            id="file"
             type="file"
             accept="application/json"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
-          <button className="button" type="submit">
-            Import
-          </button>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary">Import</button>
+          </div>
         </form>
-        {status && <div className="status">{status}</div>}
-        {count !== null && (
-          <div className="status">Imported {count} conversations.</div>
-        )}
-        {error && <div className="status error">{error}</div>}
+        {status && <div className="status-success">{status}</div>}
+        {error && <div className="status-error">{error}</div>}
       </div>
     </div>
   );
