@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag } from "lucide-react";
 
 const API_URL = "http://localhost:8000";
 
@@ -31,11 +31,23 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [showMenu, setShowMenu] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const loadConversations = async () => {
     try {
@@ -94,17 +106,32 @@ export default function App() {
     return title.length > 60 ? title.slice(0, 60) + "..." : title;
   };
 
+  const handleDeleteConversation = async () => {
+    if (!selectedConversation || !confirm('Delete this conversation?')) return;
+    
+    try {
+      await fetch(`${API_URL}/conversations/${selectedConversation.id}`, {
+        method: 'DELETE'
+      });
+      setSelectedConversation(null);
+      loadConversations();
+      setShowMenu(false);
+    } catch (error) {
+      console.error('Failed to delete:', error);
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="logo">
             <Sparkles size={20} />
-            <span>ChatArchive</span>
+            {!sidebarCollapsed && <span>ChatArchive</span>}
           </div>
-          <button className="icon-btn" title="Toggle theme">
-            <Sun size={18} />
+          <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </div>
 
@@ -155,12 +182,35 @@ export default function App() {
       {/* Main Content */}
       <main className="main-content">
         <header className="main-header">
-          <button className="icon-btn">
+          <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
             <Menu size={20} />
           </button>
           <h2 className="header-title">
             {selectedConversation?.title || "Select a conversation"}
           </h2>
+          {selectedConversation && (
+            <div className="header-actions">
+              <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
+                <MoreVertical size={20} />
+              </button>
+              {showMenu && (
+                <div className="dropdown-menu">
+                  <button className="menu-item" onClick={handleDeleteConversation}>
+                    <Trash2 size={16} />
+                    Delete conversation
+                  </button>
+                  <button className="menu-item" onClick={() => setShowMenu(false)}>
+                    <Download size={16} />
+                    Export as Markdown
+                  </button>
+                  <button className="menu-item" onClick={() => setShowMenu(false)}>
+                    <Tag size={16} />
+                    Add tags
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="content-area">

@@ -11,6 +11,18 @@
   --accent-hover: #4493ff;
 }
 
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-tertiary: #eaeef2;
+  --text-primary: #1f2328;
+  --text-secondary: #59636e;
+  --text-muted: #8c959f;
+  --border-color: #d1d9e0;
+  --accent: #2f81f7;
+  --accent-hover: #4493ff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -38,6 +50,17 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar.collapsed .search-box,
+.sidebar.collapsed .import-btn,
+.sidebar.collapsed .conversations-list {
+  display: none;
 }
 
 .sidebar-header {
@@ -257,6 +280,47 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+  flex: 1;
+}
+
+.header-actions {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.menu-item svg {
+  color: var(--text-secondary);
 }
 
 .content-area {
@@ -438,47 +502,4 @@ body {
   border-radius: 6px;
   color: #f87171;
   font-size: 13px;
-}
-  background: #f7f7f4;
-  border-radius: 16px;
-  padding: 16px;
-  border: 1px solid #e3dfd7;
-}
-
-.uploader {
-  border: 2px dashed #b8b2a7;
-  border-radius: 16px;
-  padding: 24px;
-  background: #fbfaf7;
-  display: grid;
-  gap: 12px;
-}
-
-.button {
-  background: #111827;
-  color: #fff;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-.status {
-  margin-top: 16px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: #eef6f0;
-  color: #14532d;
-}
-
-.error {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-@media (max-width: 640px) {
-  .hero {
-    padding: 24px;
-  }
 }
