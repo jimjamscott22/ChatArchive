@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -23,6 +24,8 @@ from app.schemas import (
     ImportSettingsResponse,
     ImportSettingsUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ChatArchive API")
 
@@ -294,13 +297,15 @@ async def import_chatgpt(
         import_record.status = "failure"
         import_record.error_message = "Invalid data format"
         db.commit()
+        logger.error(f"Import validation error for {file.filename}: {exc}")
         raise HTTPException(status_code=400, detail="Invalid data format") from exc
-    except Exception:
+    except Exception as exc:
         # Handle unexpected errors without exposing internals
         db.rollback()
         import_record.status = "failure"
         import_record.error_message = "An error occurred during import"
         db.commit()
+        logger.exception(f"Unexpected error during import of {file.filename}")
         raise HTTPException(status_code=500, detail="Import failed")
 
     return records
