@@ -394,7 +394,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const updateSetting = (key: keyof ImportSettings, value: any) => {
+  const updateSetting = <K extends keyof ImportSettings>(key: K, value: ImportSettings[K]) => {
     if (settings) {
       setSettings({ ...settings, [key]: value });
     }

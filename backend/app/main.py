@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
@@ -288,12 +288,20 @@ async def import_chatgpt(
         import_record.imported_count = len(records)
         db.commit()
         
-    except Exception as exc:
+    except (ValueError, KeyError) as exc:
+        # Handle data validation errors
         db.rollback()
         import_record.status = "failure"
-        import_record.error_message = str(exc)
+        import_record.error_message = "Invalid data format"
         db.commit()
-        raise HTTPException(status_code=500, detail="Import failed") from exc
+        raise HTTPException(status_code=400, detail="Invalid data format") from exc
+    except Exception:
+        # Handle unexpected errors without exposing internals
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "An error occurred during import"
+        db.commit()
+        raise HTTPException(status_code=500, detail="Import failed")
 
     return records
 
@@ -398,7 +406,7 @@ def update_import_settings(
     for key, value in update_data.items():
         setattr(settings, key, value)
     
-    settings.updated_at = datetime.utcnow()
+    settings.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(settings)
     

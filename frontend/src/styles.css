@@ -532,6 +532,7 @@ body {
 .settings-modal {
   width: 800px;
   max-width: 90vw;
+  min-width: 320px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;

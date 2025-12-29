@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -61,7 +61,7 @@ class ImportHistory(Base):
     source_type: Mapped[str] = mapped_column(String(50), index=True)  # chatgpt, claude, etc.
     file_format: Mapped[str] = mapped_column(String(50))  # json, csv, xml
     status: Mapped[str] = mapped_column(String(50), index=True)  # success, failure, partial
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     imported_count: Mapped[int] = mapped_column(Integer, default=0)  # Number of conversations imported
     error_message: Mapped[str | None] = mapped_column(Text)  # Error details if failed
 
@@ -80,4 +80,4 @@ class ImportSettings(Base):
     skip_empty_conversations: Mapped[bool] = mapped_column(Boolean, default=True)
     
     # Metadata
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
