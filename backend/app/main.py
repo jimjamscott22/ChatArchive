@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
@@ -11,13 +13,19 @@ import uvicorn
 
 from app.database import get_db
 from app.importers.chatgpt import parse_chatgpt_export
-from app.models import Base, Conversation, Message
+from app.models import Base, Conversation, Message, ImportHistory, ImportSettings
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
     ConversationListResponse,
     MessageResponse,
+    ImportHistoryResponse,
+    ImportHistoryListResponse,
+    ImportSettingsResponse,
+    ImportSettingsUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ChatArchive API")
 
@@ -227,37 +235,187 @@ async def import_chatgpt(
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
+    
+    # Create import history record
+    import_record = ImportHistory(
+        filename=file.filename,
+        source_location=None,  # Could be enhanced to track upload source
+        source_type="chatgpt",
+        file_format="json",
+        status="processing",
+        imported_count=0,
+    )
+    db.add(import_record)
+    db.commit()
+    db.refresh(import_record)
+    
     try:
         payload: Any = json.loads(raw)
     except json.JSONDecodeError as exc:
+        import_record.status = "failure"
+        import_record.error_message = "Invalid JSON format"
+        db.commit()
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
 
     try:
         parsed = parse_chatgpt_export(payload)
     except ValueError as exc:
+        import_record.status = "failure"
+        import_record.error_message = str(exc)
+        db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     records: list[Conversation] = []
-    for item in parsed:
-        # Extract messages before creating conversation
-        messages_data = item.pop("messages", [])
-        
-        convo = Conversation(**item)
-        db.add(convo)
-        db.flush()  # Get the conversation ID
-        
-        # Add messages
-        for msg_data in messages_data:
-            message = Message(conversation_id=convo.id, **msg_data)
-            db.add(message)
-        
-        records.append(convo)
+    try:
+        for item in parsed:
+            # Extract messages before creating conversation
+            messages_data = item.pop("messages", [])
+            
+            convo = Conversation(**item)
+            db.add(convo)
+            db.flush()  # Get the conversation ID
+            
+            # Add messages
+            for msg_data in messages_data:
+                message = Message(conversation_id=convo.id, **msg_data)
+                db.add(message)
+            
+            records.append(convo)
 
-    db.commit()
-    for convo in records:
-        db.refresh(convo)
+        db.commit()
+        for convo in records:
+            db.refresh(convo)
+        
+        # Update import record with success
+        import_record.status = "success"
+        import_record.imported_count = len(records)
+        db.commit()
+        
+    except (ValueError, KeyError) as exc:
+        # Handle data validation errors
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Invalid data format"
+        db.commit()
+        logger.error(f"Import validation error for {file.filename}: {exc}")
+        raise HTTPException(status_code=400, detail="Invalid data format") from exc
+    except Exception as exc:
+        # Handle unexpected errors without exposing internals
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "An error occurred during import"
+        db.commit()
+        logger.exception(f"Unexpected error during import of {file.filename}")
+        raise HTTPException(status_code=500, detail="Import failed")
 
     return records
+
+
+# ============ Import History Endpoints ============
+
+@app.get("/import/history", response_model=ImportHistoryListResponse)
+def get_import_history(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    source_type: str | None = Query(None, description="Filter by source type"),
+    status: str | None = Query(None, description="Filter by status"),
+) -> ImportHistoryListResponse:
+    """Get import history with pagination and filtering."""
+    
+    query = db.query(ImportHistory)
+    
+    # Apply filters
+    if source_type:
+        query = query.filter(ImportHistory.source_type == source_type)
+    if status:
+        query = query.filter(ImportHistory.status == status)
+    
+    # Get total count
+    total = query.count()
+    
+    # Sort by most recent first
+    query = query.order_by(ImportHistory.created_at.desc())
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    history_items = query.offset(offset).limit(page_size).all()
+    
+    # Calculate total pages
+    pages = (total + page_size - 1) // page_size
+    
+    return ImportHistoryListResponse(
+        items=history_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages,
+    )
+
+
+@app.get("/import/history/{history_id}", response_model=ImportHistoryResponse)
+def get_import_history_item(
+    history_id: int,
+    db: Session = Depends(get_db),
+) -> ImportHistoryResponse:
+    """Get a specific import history record."""
+    
+    history_item = db.query(ImportHistory).filter(ImportHistory.id == history_id).first()
+    
+    if not history_item:
+        raise HTTPException(status_code=404, detail="Import history record not found")
+    
+    return history_item
+
+
+# ============ Import Settings Endpoints ============
+
+@app.get("/settings/import", response_model=ImportSettingsResponse)
+def get_import_settings(db: Session = Depends(get_db)) -> ImportSettingsResponse:
+    """Get current import settings."""
+    
+    settings = db.query(ImportSettings).first()
+    
+    # Create default settings if none exist
+    if not settings:
+        settings = ImportSettings(
+            allowed_formats="json,csv,xml",
+            default_format="json",
+            auto_merge_duplicates=False,
+            keep_separate=True,
+            skip_empty_conversations=True,
+        )
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    
+    return settings
+
+
+@app.put("/settings/import", response_model=ImportSettingsResponse)
+def update_import_settings(
+    updates: ImportSettingsUpdate,
+    db: Session = Depends(get_db),
+) -> ImportSettingsResponse:
+    """Update import settings."""
+    
+    settings = db.query(ImportSettings).first()
+    
+    # Create if doesn't exist
+    if not settings:
+        settings = ImportSettings()
+        db.add(settings)
+    
+    # Apply updates
+    update_data = updates.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(settings, key, value)
+    
+    settings.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(settings)
+    
+    return settings
 
 
 if __name__ == "__main__":

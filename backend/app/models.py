@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Index
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -50,3 +50,34 @@ class Message(Base):
     __table_args__ = (
         Index("ix_messages_conversation_order", "conversation_id", "order_index"),
     )
+
+
+class ImportHistory(Base):
+    __tablename__ = "import_history"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    source_location: Mapped[str | None] = mapped_column(String(500))  # File path or URL
+    source_type: Mapped[str] = mapped_column(String(50), index=True)  # chatgpt, claude, etc.
+    file_format: Mapped[str] = mapped_column(String(50))  # json, csv, xml
+    status: Mapped[str] = mapped_column(String(50), index=True)  # success, failure, partial
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    imported_count: Mapped[int] = mapped_column(Integer, default=0)  # Number of conversations imported
+    error_message: Mapped[str | None] = mapped_column(Text)  # Error details if failed
+
+
+class ImportSettings(Base):
+    __tablename__ = "import_settings"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # File format preferences
+    allowed_formats: Mapped[str] = mapped_column(String(255), default="json,csv,xml")  # Comma-separated
+    default_format: Mapped[str] = mapped_column(String(50), default="json")
+    
+    # Import behavior
+    auto_merge_duplicates: Mapped[bool] = mapped_column(Boolean, default=False)
+    keep_separate: Mapped[bool] = mapped_column(Boolean, default=True)
+    skip_empty_conversations: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Metadata
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

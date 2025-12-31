@@ -71,3 +71,53 @@ class SearchResult(BaseModel):
     conversation: ConversationResponse
     snippet: str | None = None
     match_count: int = 0
+
+
+# ============ Import History Schemas ============
+
+class ImportHistoryResponse(BaseModel):
+    """Import history record."""
+    id: int
+    filename: str
+    source_location: str | None = None
+    source_type: str
+    file_format: str
+    status: str
+    created_at: datetime
+    imported_count: int
+    error_message: str | None = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportHistoryListResponse(BaseModel):
+    """Paginated list of import history records."""
+    items: list[ImportHistoryResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+# ============ Import Settings Schemas ============
+
+class ImportSettingsResponse(BaseModel):
+    """Import settings configuration."""
+    id: int
+    allowed_formats: str
+    default_format: str
+    auto_merge_duplicates: bool
+    keep_separate: bool
+    skip_empty_conversations: bool
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportSettingsUpdate(BaseModel):
+    """Import settings update payload."""
+    allowed_formats: str | None = None
+    default_format: str | None = None
+    auto_merge_duplicates: bool | None = None
+    keep_separate: bool | None = None
+    skip_empty_conversations: bool | None = None
