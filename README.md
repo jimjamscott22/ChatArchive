@@ -64,7 +64,7 @@ and other importers are planned next.
 
 5. **Initialize the database**
    ```bash
-   python -m app.database.init_db
+   python init_db.py
    ```
 
 6. **Start the application**

@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github-dark.css";
 
 const API_URL = "http://localhost:8000";
 
@@ -253,10 +256,10 @@ export default function App() {
               {selectedConversation.messages.map((msg) => (
                 <div key={msg.id} className={`message ${msg.role}`}>
                   <div className="message-role">{msg.role === "user" ? "You" : "Assistant"}</div>
-                  <div className="message-content">
-                    {msg.content.split("\n").map((line, i) => (
-                      <p key={i}>{line}</p>
-                    ))}
+                  <div className="message-content markdown-content">
+                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               ))}
