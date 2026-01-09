@@ -13,6 +13,9 @@ import uvicorn
 
 from app.database import get_db
 from app.importers.chatgpt import parse_chatgpt_export
+from app.importers.claude import parse_claude_export
+from app.importers.gemini import parse_gemini_export
+from app.importers.copilot import parse_copilot_export
 from app.models import Base, Conversation, Message, ImportHistory, ImportSettings
 from app.schemas import (
     ConversationResponse,
@@ -306,6 +309,219 @@ async def import_chatgpt(
         import_record.error_message = "An error occurred during import"
         db.commit()
         logger.exception(f"Unexpected error during import of {file.filename}")
+        raise HTTPException(status_code=500, detail="Import failed")
+
+    return records
+
+
+@app.post("/import/claude", response_model=list[ConversationResponse])
+async def import_claude(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> list[ConversationResponse]:
+    """Import conversations from Claude export."""
+    if not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Expected a .json export")
+
+    raw = await file.read()
+    
+    import_record = ImportHistory(
+        filename=file.filename,
+        source_type="claude",
+        file_format="json",
+        status="processing",
+        imported_count=0,
+    )
+    db.add(import_record)
+    db.commit()
+    db.refresh(import_record)
+    
+    try:
+        payload: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        import_record.status = "failure"
+        import_record.error_message = "Invalid JSON format"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+
+    try:
+        parsed = parse_claude_export(payload)
+    except ValueError as exc:
+        import_record.status = "failure"
+        import_record.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    records: list[Conversation] = []
+    try:
+        for item in parsed:
+            messages_data = item.pop("messages", [])
+            convo = Conversation(**item)
+            db.add(convo)
+            db.flush()
+            
+            for msg_data in messages_data:
+                message = Message(conversation_id=convo.id, **msg_data)
+                db.add(message)
+            
+            records.append(convo)
+
+        db.commit()
+        for convo in records:
+            db.refresh(convo)
+        
+        import_record.status = "success"
+        import_record.imported_count = len(records)
+        db.commit()
+        
+    except Exception as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Import failed"
+        db.commit()
+        logger.exception(f"Error importing Claude file {file.filename}")
+        raise HTTPException(status_code=500, detail="Import failed")
+
+    return records
+
+
+@app.post("/import/gemini", response_model=list[ConversationResponse])
+async def import_gemini(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> list[ConversationResponse]:
+    """Import conversations from Gemini/Bard export."""
+    if not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Expected a .json export")
+
+    raw = await file.read()
+    
+    import_record = ImportHistory(
+        filename=file.filename,
+        source_type="gemini",
+        file_format="json",
+        status="processing",
+        imported_count=0,
+    )
+    db.add(import_record)
+    db.commit()
+    db.refresh(import_record)
+    
+    try:
+        payload: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        import_record.status = "failure"
+        import_record.error_message = "Invalid JSON format"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+
+    try:
+        parsed = parse_gemini_export(payload)
+    except ValueError as exc:
+        import_record.status = "failure"
+        import_record.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    records: list[Conversation] = []
+    try:
+        for item in parsed:
+            messages_data = item.pop("messages", [])
+            convo = Conversation(**item)
+            db.add(convo)
+            db.flush()
+            
+            for msg_data in messages_data:
+                message = Message(conversation_id=convo.id, **msg_data)
+                db.add(message)
+            
+            records.append(convo)
+
+        db.commit()
+        for convo in records:
+            db.refresh(convo)
+        
+        import_record.status = "success"
+        import_record.imported_count = len(records)
+        db.commit()
+        
+    except Exception as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Import failed"
+        db.commit()
+        logger.exception(f"Error importing Gemini file {file.filename}")
+        raise HTTPException(status_code=500, detail="Import failed")
+
+    return records
+
+
+@app.post("/import/copilot", response_model=list[ConversationResponse])
+async def import_copilot(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> list[ConversationResponse]:
+    """Import conversations from GitHub Copilot export."""
+    if not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Expected a .json export")
+
+    raw = await file.read()
+    
+    import_record = ImportHistory(
+        filename=file.filename,
+        source_type="copilot",
+        file_format="json",
+        status="processing",
+        imported_count=0,
+    )
+    db.add(import_record)
+    db.commit()
+    db.refresh(import_record)
+    
+    try:
+        payload: Any = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        import_record.status = "failure"
+        import_record.error_message = "Invalid JSON format"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+
+    try:
+        parsed = parse_copilot_export(payload)
+    except ValueError as exc:
+        import_record.status = "failure"
+        import_record.error_message = str(exc)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    records: list[Conversation] = []
+    try:
+        for item in parsed:
+            messages_data = item.pop("messages", [])
+            convo = Conversation(**item)
+            db.add(convo)
+            db.flush()
+            
+            for msg_data in messages_data:
+                message = Message(conversation_id=convo.id, **msg_data)
+                db.add(message)
+            
+            records.append(convo)
+
+        db.commit()
+        for convo in records:
+            db.refresh(convo)
+        
+        import_record.status = "success"
+        import_record.imported_count = len(records)
+        db.commit()
+        
+    except Exception as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Import failed"
+        db.commit()
+        logger.exception(f"Error importing Copilot file {file.filename}")
         raise HTTPException(status_code=500, detail="Import failed")
 
     return records

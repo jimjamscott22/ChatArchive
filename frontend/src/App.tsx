@@ -60,6 +60,7 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
 
   // Load conversations on mount
   useEffect(() => {
@@ -75,9 +76,13 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const loadConversations = async () => {
+  const loadConversations = async (source?: string) => {
     try {
-      const response = await fetch(`${API_URL}/conversations?page_size=100`);
+      const params = new URLSearchParams({ page_size: '100' });
+      if (source && source !== 'all') {
+        params.append('source', source);
+      }
+      const response = await fetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
       setLoading(false);
@@ -132,6 +137,25 @@ export default function App() {
     return title.length > 60 ? title.slice(0, 60) + "..." : title;
   };
 
+  const getSourceInfo = (source: string) => {
+    const sources: Record<string, { icon: string; name: string; color: string }> = {
+      chatgpt: { icon: '💬', name: 'ChatGPT', color: 'var(--chatgpt-color)' },
+      claude: { icon: '🤖', name: 'Claude', color: 'var(--claude-color)' },
+      gemini: { icon: '✨', name: 'Gemini', color: 'var(--gemini-color)' },
+      copilot: { icon: '👨‍💻', name: 'Copilot', color: 'var(--copilot-color)' },
+    };
+    return sources[source] || { icon: '📝', name: source, color: 'var(--accent)' };
+  };
+
+  const handleSourceFilter = (source: string) => {
+    setSourceFilter(source);
+    if (source === 'all') {
+      loadConversations();
+    } else {
+      loadConversations(source);
+    }
+  };
+
   const handleDeleteConversation = async () => {
     if (!selectedConversation || !confirm('Delete this conversation?')) return;
     
@@ -181,6 +205,19 @@ export default function App() {
           Settings
         </button>
 
+        {!sidebarCollapsed && (
+          <div className="source-filter">
+            <label>Filter by source:</label>
+            <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+              <option value="all">All Sources</option>
+              <option value="chatgpt">💬 ChatGPT</option>
+              <option value="claude">🤖 Claude</option>
+              <option value="gemini">✨ Gemini</option>
+              <option value="copilot">👨‍💻 Copilot</option>
+            </select>
+          </div>
+        )}
+
         <div className="conversations-list">
           {loading ? (
             <div className="loading">Loading...</div>
@@ -202,7 +239,9 @@ export default function App() {
                   {extractTags(conv.title).map((tag, i) => (
                     <span key={i} className="tag">{tag}</span>
                   ))}
-                  <span className="tag source">{conv.source}</span>
+                  <span className="tag source" data-source={conv.source}>
+                    {getSourceInfo(conv.source).icon} {getSourceInfo(conv.source).name}
+                  </span>
                 </div>
               </div>
             ))
@@ -285,6 +324,30 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<'chatgpt' | 'claude' | 'gemini' | 'copilot'>('chatgpt');
+
+  const sourceInfo = {
+    chatgpt: {
+      name: 'ChatGPT',
+      description: 'OpenAI ChatGPT conversations.json export',
+      icon: '💬',
+    },
+    claude: {
+      name: 'Claude',
+      description: 'Anthropic Claude conversation export',
+      icon: '🤖',
+    },
+    gemini: {
+      name: 'Gemini',
+      description: 'Google Gemini/Bard conversation export',
+      icon: '✨',
+    },
+    copilot: {
+      name: 'GitHub Copilot',
+      description: 'GitHub Copilot Chat conversation export',
+      icon: '👨‍💻',
+    },
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,17 +362,18 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     try {
       setStatus("Uploading...");
       setError(null);
-      const response = await fetch(`${API_URL}/import/chatgpt`, {
+      const response = await fetch(`${API_URL}/import/${source}`, {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error("Import failed");
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Import failed");
       }
 
       const data = await response.json();
-      setStatus(`Imported ${data.length} conversations!`);
+      setStatus(`Imported ${data.length} conversations from ${sourceInfo[source].name}!`);
       setTimeout(() => {
         onSuccess();
         onClose();
@@ -321,17 +385,43 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal import-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Import Conversations</h2>
         <form onSubmit={handleSubmit}>
-          <input
-            type="file"
-            accept="application/json"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
+          <div className="form-group">
+            <label htmlFor="source-select">Select Source</label>
+            <select 
+              id="source-select"
+              value={source} 
+              onChange={(e) => setSource(e.target.value as typeof source)}
+              className="source-select"
+            >
+              {Object.entries(sourceInfo).map(([key, info]) => (
+                <option key={key} value={key}>
+                  {info.icon} {info.name}
+                </option>
+              ))}
+            </select>
+            <p className="source-description">{sourceInfo[source].description}</p>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="file-input">Select File</label>
+            <input
+              id="file-input"
+              type="file"
+              accept="application/json"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="file-input"
+            />
+            {file && <p className="file-name">📄 {file.name}</p>}
+          </div>
+
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" className="primary">Import</button>
+            <button type="submit" className="primary" disabled={!file}>
+              Import from {sourceInfo[source].name}
+            </button>
           </div>
         </form>
         {status && <div className="status-success">{status}</div>}

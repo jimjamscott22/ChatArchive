@@ -9,6 +9,10 @@
   --border-color: #30363d;
   --accent: #2f81f7;
   --accent-hover: #4493ff;
+  --chatgpt-color: #10a37f;
+  --claude-color: #d97757;
+  --gemini-color: #4285f4;
+  --copilot-color: #8957e5;
 }
 
 [data-theme="light"] {
@@ -158,6 +162,65 @@ body {
   background: var(--accent-hover);
 }
 
+.settings-btn {
+  margin: 0 12px 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--accent);
+}
+
+.source-filter {
+  padding: 0 12px 12px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.source-filter label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.source-filter select {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.source-filter select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.source-filter select:hover {
+  background: var(--bg-tertiary);
+}
+
 .conversations-list {
   flex: 1;
   overflow-y: auto;
@@ -248,6 +311,27 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
+  font-weight: 500;
+}
+
+.tag.source[data-source="chatgpt"] {
+  background: var(--chatgpt-color);
+  border-color: var(--chatgpt-color);
+}
+
+.tag.source[data-source="claude"] {
+  background: var(--claude-color);
+  border-color: var(--claude-color);
+}
+
+.tag.source[data-source="gemini"] {
+  background: var(--gemini-color);
+  border-color: var(--gemini-color);
+}
+
+.tag.source[data-source="copilot"] {
+  background: var(--copilot-color);
+  border-color: var(--copilot-color);
 }
 
 .loading, .empty {
@@ -548,6 +632,10 @@ body {
   max-width: 90vw;
 }
 
+.import-modal {
+  min-width: 500px;
+}
+
 .modal h2 {
   margin: 0 0 20px;
   font-size: 20px;
@@ -559,12 +647,53 @@ body {
   gap: 16px;
 }
 
-.modal input[type="file"] {
-  padding: 8px;
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.source-select,
+.file-input {
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--bg-primary);
   color: var(--text-primary);
+  font-size: 14px;
+}
+
+.source-select {
+  cursor: pointer;
+}
+
+.source-select:focus,
+.file-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.source-description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.file-name {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .modal-actions {
@@ -596,6 +725,15 @@ body {
 
 .modal button.primary:hover {
   background: var(--accent-hover);
+}
+
+.modal button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal button:disabled:hover {
+  background: var(--accent);
 }
 
 .status-success {
