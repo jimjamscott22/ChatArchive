@@ -343,5 +343,5 @@ If you see duplicate conversations:
 
 If you encounter issues not covered in this guide:
 1. Check the [GitHub Issues](https://github.com/jimjamscott22/chatarchive/issues)
-2. Review the [API Documentation](API.md)
+2. Review the [API Documentation](./API.md)
 3. Open a new issue with details about your problem

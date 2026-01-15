@@ -6,9 +6,6 @@ import json
 import sys
 from pathlib import Path
 
-# Add the app directory to the path
-sys.path.insert(0, str(Path(__file__).parent / "app"))
-
 from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
 from app.importers.copilot import parse_copilot_export
@@ -19,8 +16,15 @@ def load_json(filepath):
     with open(filepath, 'r') as f:
         return json.load(f)
 
-def verify_parser(name, parser_func, filepath):
-    """Verify a parser works correctly."""
+def verify_parser(name, parser_func, filepath, expected_source):
+    """Verify a parser works correctly.
+    
+    Args:
+        name: Display name for the parser
+        parser_func: Parser function to test
+        filepath: Path to test data file
+        expected_source: Expected source field value in parsed output
+    """
     print(f"\n{'='*60}")
     print(f"Testing {name} Parser")
     print(f"{'='*60}")
@@ -48,7 +52,7 @@ def verify_parser(name, parser_func, filepath):
         print(f"✓ All required fields present")
         
         # Check source
-        assert conv["source"] == name.lower().replace(" ", ""), f"Source should be {name.lower()}"
+        assert conv["source"] == expected_source, f"Source should be {expected_source}"
         print(f"✓ Source is '{conv['source']}'")
         
         # Check messages
@@ -90,15 +94,15 @@ def main():
     test_dir = Path("/tmp/test_imports")
     
     tests = [
-        ("ChatGPT", parse_chatgpt_export, test_dir / "chatgpt_test.json"),
-        ("Claude", parse_claude_export, test_dir / "claude_test.json"),
-        ("Copilot", parse_copilot_export, test_dir / "copilot_test.json"),
-        ("Gemini", parse_gemini_export, test_dir / "gemini_test.json"),
+        ("ChatGPT", parse_chatgpt_export, test_dir / "chatgpt_test.json", "chatgpt"),
+        ("Claude", parse_claude_export, test_dir / "claude_test.json", "claude"),
+        ("Copilot", parse_copilot_export, test_dir / "copilot_test.json", "copilot"),
+        ("Gemini", parse_gemini_export, test_dir / "gemini_test.json", "gemini"),
     ]
     
     results = []
-    for name, parser, filepath in tests:
-        success = verify_parser(name, parser, filepath)
+    for name, parser, filepath, expected_source in tests:
+        success = verify_parser(name, parser, filepath, expected_source)
         results.append((name, success))
     
     # Print final summary
