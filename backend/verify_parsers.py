@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 """
 End-to-end verification script for all LLM parsers.
+
+Usage:
+    python verify_parsers.py [--test-dir PATH]
+    
+Options:
+    --test-dir PATH    Directory containing test JSON files (default: /tmp/test_imports)
 """
 import json
 import sys
+import argparse
 from pathlib import Path
 
 from app.importers.chatgpt import parse_chatgpt_export
@@ -87,11 +94,29 @@ def verify_parser(name, parser_func, filepath, expected_source):
 
 def main():
     """Run all parser verifications."""
+    parser = argparse.ArgumentParser(
+        description="Verify ChatArchive LLM parsers with test data"
+    )
+    parser.add_argument(
+        "--test-dir",
+        type=str,
+        default="/tmp/test_imports",
+        help="Directory containing test JSON files (default: /tmp/test_imports)"
+    )
+    args = parser.parse_args()
+    
     print("="*60)
     print("ChatArchive Multi-LLM Parser End-to-End Verification")
     print("="*60)
     
-    test_dir = Path("/tmp/test_imports")
+    test_dir = Path(args.test_dir)
+    
+    if not test_dir.exists():
+        print(f"\n❌ Error: Test directory does not exist: {test_dir}")
+        print(f"\nPlease create the directory and add test files:")
+        print(f"  mkdir -p {test_dir}")
+        print(f"  # Add chatgpt_test.json, claude_test.json, copilot_test.json, gemini_test.json")
+        return 1
     
     tests = [
         ("ChatGPT", parse_chatgpt_export, test_dir / "chatgpt_test.json", "chatgpt"),

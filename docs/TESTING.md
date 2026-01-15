@@ -96,11 +96,24 @@ This script:
 
 ## Sample Test Data
 
-Sample test files are provided in `/tmp/test_imports/`:
+The verification script looks for sample test files. You can create them in any directory and specify the path:
+
+```bash
+# Create test files directory
+mkdir -p test_data
+
+# Create sample files (see examples in the repository)
+# Then run:
+python verify_parsers.py --test-dir ./test_data
+```
+
+Sample test files should be JSON files matching each platform's export format:
 - `chatgpt_test.json` - ChatGPT export format
 - `claude_test.json` - Claude export format
 - `copilot_test.json` - Copilot export format
 - `gemini_test.json` - Gemini export format
+
+For the exact format examples, see the test files in `backend/tests/test_*.py`.
 
 ## Writing New Tests
 
