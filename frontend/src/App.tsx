@@ -132,6 +132,19 @@ export default function App() {
     return date.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
   };
 
+  const formatDateTime = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const getPreview = (title: string | null | undefined): string => {
     if (!title) return "Untitled conversation";
     return title.length > 60 ? title.slice(0, 60) + "..." : title;
@@ -169,6 +182,228 @@ export default function App() {
     } catch (error) {
       console.error('Failed to delete:', error);
     }
+  };
+
+  const sanitizeFilename = (value: string): string => {
+    return value
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80);
+  };
+
+  const getOrderedMessages = (conversation: ConversationDetail): Message[] => {
+    return [...conversation.messages].sort((a, b) => a.order_index - b.order_index);
+  };
+
+  const getExportFilename = (conversation: ConversationDetail, extension: string): string => {
+    const title = conversation.title || `conversation-${conversation.id}`;
+    const safeTitle = sanitizeFilename(title) || `conversation-${conversation.id}`;
+    return `${safeTitle}.${extension}`;
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const escapeHtml = (value: string): string => {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  };
+
+  const buildMarkdownExport = (conversation: ConversationDetail): string => {
+    const title = (conversation.title || "Untitled conversation").trim() || "Untitled conversation";
+    const sourceName = getSourceInfo(conversation.source).name;
+    const metaLines: string[] = [];
+
+    if (sourceName) metaLines.push(`- Source: ${sourceName}`);
+    if (conversation.source_id) metaLines.push(`- Source ID: ${conversation.source_id}`);
+    if (conversation.created_at) metaLines.push(`- Created: ${formatDateTime(conversation.created_at)}`);
+    if (conversation.updated_at) metaLines.push(`- Updated: ${formatDateTime(conversation.updated_at)}`);
+    if (conversation.message_count) metaLines.push(`- Messages: ${conversation.message_count}`);
+
+    const lines: string[] = [`# ${title}`];
+    if (metaLines.length > 0) {
+      lines.push("", ...metaLines);
+    }
+    lines.push("");
+
+    const orderedMessages = getOrderedMessages(conversation);
+
+    orderedMessages.forEach((msg, index) => {
+      const roleLabel =
+        msg.role === "user"
+          ? "User"
+          : msg.role === "assistant"
+            ? "Assistant"
+            : msg.role;
+      lines.push(`## ${roleLabel}`, "");
+      if (msg.content) {
+        lines.push(msg.content.trimEnd());
+      }
+      if (index < orderedMessages.length - 1) {
+        lines.push("", "---", "");
+      }
+    });
+
+    return lines.join("\n").trim() + "\n";
+  };
+
+  const buildJsonExport = (conversation: ConversationDetail) => {
+    const orderedMessages = getOrderedMessages(conversation);
+    return {
+      ...conversation,
+      message_count: orderedMessages.length,
+      messages: orderedMessages,
+    };
+  };
+
+  const buildHtmlExport = (conversation: ConversationDetail): string => {
+    const title = (conversation.title || "Untitled conversation").trim() || "Untitled conversation";
+    const sourceName = getSourceInfo(conversation.source).name;
+    const metaLines: string[] = [];
+
+    if (sourceName) metaLines.push(`Source: ${sourceName}`);
+    if (conversation.source_id) metaLines.push(`Source ID: ${conversation.source_id}`);
+    if (conversation.created_at) metaLines.push(`Created: ${formatDateTime(conversation.created_at)}`);
+    if (conversation.updated_at) metaLines.push(`Updated: ${formatDateTime(conversation.updated_at)}`);
+    const messageCount = conversation.message_count || conversation.messages.length;
+    metaLines.push(`Messages: ${messageCount}`);
+
+    const orderedMessages = getOrderedMessages(conversation);
+    const metaHtml = metaLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
+    const messagesHtml = orderedMessages
+      .map((msg) => {
+        const roleLabel =
+          msg.role === "user"
+            ? "User"
+            : msg.role === "assistant"
+              ? "Assistant"
+              : msg.role;
+        const content = msg.content ? escapeHtml(msg.content) : "";
+        return `
+          <section class="message">
+            <h2>${escapeHtml(roleLabel)}</h2>
+            <div class="message-content">${content}</div>
+          </section>
+        `;
+      })
+      .join("\n");
+
+    return `
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(title)}</title>
+          <style>
+            :root {
+              color: #111;
+              font-family: "Helvetica Neue", Arial, sans-serif;
+            }
+            body {
+              margin: 32px;
+            }
+            h1 {
+              font-size: 28px;
+              margin-bottom: 12px;
+            }
+            .meta {
+              margin-bottom: 24px;
+              padding-left: 18px;
+              color: #444;
+            }
+            .message {
+              margin-bottom: 24px;
+              page-break-inside: avoid;
+            }
+            .message h2 {
+              font-size: 18px;
+              margin-bottom: 8px;
+            }
+            .message-content {
+              white-space: pre-wrap;
+              line-height: 1.5;
+              background: #f6f6f6;
+              border-radius: 8px;
+              padding: 12px;
+            }
+            @media print {
+              body {
+                margin: 20mm;
+              }
+              .message-content {
+                background: #fff;
+                border: 1px solid #e5e5e5;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(title)}</h1>
+          <ul class="meta">${metaHtml}</ul>
+          ${messagesHtml}
+        </body>
+      </html>
+    `;
+  };
+
+  const handleExportMarkdown = () => {
+    if (!selectedConversation) return;
+
+    const markdown = buildMarkdownExport(selectedConversation);
+    const filename = getExportFilename(selectedConversation, "md");
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    downloadBlob(blob, filename);
+    setShowMenu(false);
+  };
+
+  const handleExportJson = () => {
+    if (!selectedConversation) return;
+
+    const jsonPayload = buildJsonExport(selectedConversation);
+    const filename = getExportFilename(selectedConversation, "json");
+    const blob = new Blob([JSON.stringify(jsonPayload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    downloadBlob(blob, filename);
+    setShowMenu(false);
+  };
+
+  const handleExportPdf = () => {
+    if (!selectedConversation) return;
+
+    const exportWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!exportWindow) {
+      alert("Unable to open the export window. Please allow popups and try again.");
+      return;
+    }
+
+    exportWindow.document.open();
+    exportWindow.document.write(buildHtmlExport(selectedConversation));
+    exportWindow.document.close();
+    exportWindow.focus();
+
+    const triggerPrint = () => {
+      exportWindow.print();
+    };
+
+    exportWindow.onload = triggerPrint;
+    exportWindow.onafterprint = () => {
+      exportWindow.close();
+    };
+    setTimeout(triggerPrint, 300);
+    setShowMenu(false);
   };
 
   return (
@@ -269,9 +504,17 @@ export default function App() {
                     <Trash2 size={16} />
                     Delete conversation
                   </button>
-                  <button className="menu-item" onClick={() => setShowMenu(false)}>
+                  <button className="menu-item" onClick={handleExportMarkdown}>
                     <Download size={16} />
                     Export as Markdown
+                  </button>
+                  <button className="menu-item" onClick={handleExportJson}>
+                    <Download size={16} />
+                    Export as JSON
+                  </button>
+                  <button className="menu-item" onClick={handleExportPdf}>
+                    <Download size={16} />
+                    Export as PDF
                   </button>
                   <button className="menu-item" onClick={() => setShowMenu(false)}>
                     <Tag size={16} />
