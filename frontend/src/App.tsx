@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 
 const API_URL = "http://localhost:8000";
+const PAGE_SIZE = 100;
 
 type Conversation = {
   id: number;
@@ -89,10 +90,12 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
 
   // Load conversations on mount
   useEffect(() => {
-    loadConversations();
+    refreshConversationList(1);
   }, []);
 
   // Apply theme
@@ -104,20 +107,64 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const loadConversations = async (source?: string) => {
+  const loadConversations = async (source?: string, page = 1) => {
     try {
-      const params = new URLSearchParams({ page_size: '100' });
-      if (source && source !== 'all') {
-        params.append('source', source);
+      setLoading(true);
+      const params = new URLSearchParams({
+        page_size: PAGE_SIZE.toString(),
+        page: page.toString(),
+      });
+      if (source && source !== "all") {
+        params.append("source", source);
       }
       const response = await fetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
+      setCurrentPage(data.page ?? page);
+      setTotalPages(data.pages ?? 0);
       setLoading(false);
     } catch (error) {
       console.error("Failed to load conversations:", error);
       setLoading(false);
     }
+  };
+
+  const loadSearchResults = async (query: string, page = 1, source?: string) => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        q: query,
+        page_size: PAGE_SIZE.toString(),
+        page: page.toString(),
+      });
+      if (source && source !== "all") {
+        params.append("source", source);
+      }
+      const response = await fetch(`${API_URL}/conversations/search?${params}`);
+      const data = await response.json();
+      setConversations(data.items || []);
+      setCurrentPage(data.page ?? page);
+      setTotalPages(data.pages ?? 0);
+      setLoading(false);
+    } catch (error) {
+      console.error("Search failed:", error);
+      setLoading(false);
+    }
+  };
+
+  const refreshConversationList = (page = currentPage, source?: string) => {
+    const nextSource = source ?? sourceFilter;
+    if (searchQuery.trim()) {
+      loadSearchResults(searchQuery.trim(), page, nextSource);
+      return;
+    }
+    loadConversations(nextSource, page);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1) return;
+    if (totalPages && nextPage > totalPages) return;
+    refreshConversationList(nextPage);
   };
 
   const loadConversation = async (id: number) => {
@@ -132,20 +179,13 @@ export default function App() {
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
+    setCurrentPage(1);
     if (!query.trim()) {
-      loadConversations();
+      loadConversations(sourceFilter, 1);
       return;
     }
 
-    try {
-      const response = await fetch(
-        `${API_URL}/conversations/search?q=${encodeURIComponent(query)}&page_size=100`
-      );
-      const data = await response.json();
-      setConversations(data.items || []);
-    } catch (error) {
-      console.error("Search failed:", error);
-    }
+    await loadSearchResults(query.trim(), 1, sourceFilter);
   };
 
   const extractTags = (title: string | null | undefined): string[] => {
@@ -190,11 +230,12 @@ export default function App() {
 
   const handleSourceFilter = (source: string) => {
     setSourceFilter(source);
-    if (source === 'all') {
-      loadConversations();
-    } else {
-      loadConversations(source);
+    setCurrentPage(1);
+    if (searchQuery.trim()) {
+      loadSearchResults(searchQuery.trim(), 1, source);
+      return;
     }
+    loadConversations(source, 1);
   };
 
   const handleDeleteConversation = async () => {
@@ -205,7 +246,7 @@ export default function App() {
         method: 'DELETE'
       });
       setSelectedConversation(null);
-      loadConversations();
+      refreshConversationList();
       setShowMenu(false);
     } catch (error) {
       console.error('Failed to delete:', error);
@@ -515,6 +556,28 @@ export default function App() {
             ))
           )}
         </div>
+
+        {!sidebarCollapsed && totalPages > 1 && (
+          <div className="pagination-controls">
+            <button
+              className="pagination-btn"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={loading || currentPage <= 1}
+            >
+              Prev
+            </button>
+            <span className="pagination-info">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              className="pagination-btn"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={loading || currentPage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}
@@ -585,7 +648,7 @@ export default function App() {
 
       {/* Import Modal */}
       {showImportModal && (
-        <ImportModal onClose={() => setShowImportModal(false)} onSuccess={loadConversations} />
+        <ImportModal onClose={() => setShowImportModal(false)} onSuccess={() => refreshConversationList()} />
       )}
 
       {/* Settings Modal */}
@@ -596,7 +659,7 @@ export default function App() {
       {showDuplicatesModal && (
         <DuplicatesModal
           onClose={() => setShowDuplicatesModal(false)}
-          onSuccess={loadConversations}
+          onSuccess={() => refreshConversationList()}
         />
       )}
     </div>
