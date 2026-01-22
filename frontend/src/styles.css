@@ -696,6 +696,16 @@ body {
   color: var(--text-secondary);
 }
 
+.import-info {
+  padding: 10px 12px;
+  background: rgba(47, 129, 247, 0.1);
+  border: 1px solid rgba(47, 129, 247, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 12px;
+}
+
 .modal-actions {
   display: flex;
   gap: 12px;
@@ -1025,6 +1035,247 @@ body {
 }
 
 .modal button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== DUPLICATES MODAL ===== */
+.duplicates-btn {
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.duplicates-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.duplicates-modal {
+  width: 900px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.strategy-selector {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.strategy-selector label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.strategy-selector select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.strategy-selector select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.duplicates-summary {
+  display: flex;
+  gap: 24px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.duplicates-summary .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.duplicates-summary .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.duplicates-summary .value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.duplicates-content {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.duplicate-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.duplicate-group {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.group-header {
+  padding: 16px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.group-header:hover {
+  background: var(--bg-secondary);
+}
+
+.group-info h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.group-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.expand-btn:hover {
+  color: var(--text-primary);
+}
+
+.group-content {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.group-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.group-actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.group-actions button:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.conversations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.duplicate-conversation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.duplicate-conversation:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.duplicate-conversation input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.duplicate-conversation .conv-info {
+  flex: 1;
+}
+
+.duplicate-conversation .conv-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.duplicate-conversation .conv-details {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+button.danger {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: white !important;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+button.danger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

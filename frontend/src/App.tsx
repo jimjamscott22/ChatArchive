@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -50,6 +50,33 @@ type ImportSettings = {
   updated_at: string;
 };
 
+type DuplicateConversation = {
+  id: number;
+  source: string;
+  source_id: string | null;
+  title: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  message_count: number;
+};
+
+type DuplicateGroup = {
+  key: string;
+  source: string;
+  source_id: string | null;
+  title: string | null;
+  count: number;
+  conversations: DuplicateConversation[];
+  total_messages: number;
+};
+
+type DuplicatesData = {
+  groups: DuplicateGroup[];
+  total_duplicates: number;
+  total_groups: number;
+  strategy: string;
+};
+
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
@@ -57,6 +84,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -440,6 +468,11 @@ export default function App() {
           Settings
         </button>
 
+        <button className="duplicates-btn" onClick={() => setShowDuplicatesModal(true)}>
+          <Copy size={16} />
+          Find Duplicates
+        </button>
+
         {!sidebarCollapsed && (
           <div className="source-filter">
             <label>Filter by source:</label>
@@ -559,6 +592,13 @@ export default function App() {
       {showSettingsModal && (
         <SettingsModal onClose={() => setShowSettingsModal(false)} />
       )}
+
+      {showDuplicatesModal && (
+        <DuplicatesModal
+          onClose={() => setShowDuplicatesModal(false)}
+          onSuccess={loadConversations}
+        />
+      )}
     </div>
   );
 }
@@ -568,6 +608,21 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'chatgpt' | 'claude' | 'gemini' | 'copilot'>('chatgpt');
+  const [settings, setSettings] = useState<ImportSettings | null>(null);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/settings/import`);
+      const data = await response.json();
+      setSettings(data);
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+    }
+  };
 
   const sourceInfo = {
     chatgpt: {
@@ -616,7 +671,9 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       }
 
       const data = await response.json();
-      setStatus(`Imported ${data.length} conversations from ${sourceInfo[source].name}!`);
+      const countMsg = data.length === 1 ? "1 conversation" : `${data.length} conversations`;
+      const dupeMsg = settings?.auto_merge_duplicates ? " (duplicates skipped)" : "";
+      setStatus(`Imported ${countMsg} from ${sourceInfo[source].name}!${dupeMsg}`);
       setTimeout(() => {
         onSuccess();
         onClose();
@@ -659,6 +716,12 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             />
             {file && <p className="file-name">📄 {file.name}</p>}
           </div>
+
+          {settings?.auto_merge_duplicates && (
+            <div className="import-info">
+              ℹ️ Auto-merge duplicates is enabled. Existing conversations will be skipped.
+            </div>
+          )}
 
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
@@ -916,6 +979,273 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [duplicates, setDuplicates] = useState<DuplicatesData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [strategy, setStrategy] = useState<'source_id' | 'title' | 'both'>('source_id');
+  const [selectedForDeletion, setSelectedForDeletion] = useState<Set<number>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const getSourceInfo = (source: string) => {
+    const sources: Record<string, { icon: string; name: string }> = {
+      chatgpt: { icon: '💬', name: 'ChatGPT' },
+      claude: { icon: '🤖', name: 'Claude' },
+      gemini: { icon: '✨', name: 'Gemini' },
+      copilot: { icon: '👨‍💻', name: 'Copilot' },
+    };
+    return sources[source] || { icon: '📝', name: source };
+  };
+
+  const formatDateTime = (dateStr: string | null): string => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  useEffect(() => {
+    loadDuplicates();
+  }, [strategy]);
+
+  const loadDuplicates = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/conversations/duplicates?strategy=${strategy}`);
+      const data = await response.json();
+      setDuplicates(data);
+    } catch (error) {
+      console.error("Failed to load duplicates:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleGroupExpanded = (groupKey: string) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(groupKey)) {
+      newExpanded.delete(groupKey);
+    } else {
+      newExpanded.add(groupKey);
+    }
+    setExpandedGroups(newExpanded);
+  };
+
+  const toggleSelection = (convId: number) => {
+    const newSelected = new Set(selectedForDeletion);
+    if (newSelected.has(convId)) {
+      newSelected.delete(convId);
+    } else {
+      newSelected.add(convId);
+    }
+    setSelectedForDeletion(newSelected);
+  };
+
+  const selectAllInGroup = (group: DuplicateGroup) => {
+    const newSelected = new Set(selectedForDeletion);
+    group.conversations.forEach(conv => newSelected.add(conv.id));
+    setSelectedForDeletion(newSelected);
+  };
+
+  const keepNewestInGroup = (group: DuplicateGroup) => {
+    const sorted = [...group.conversations].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    const newSelected = new Set(selectedForDeletion);
+    sorted.slice(1).forEach(conv => newSelected.add(conv.id));
+    setSelectedForDeletion(newSelected);
+  };
+
+  const keepOldestInGroup = (group: DuplicateGroup) => {
+    const sorted = [...group.conversations].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    const newSelected = new Set(selectedForDeletion);
+    sorted.slice(1).forEach(conv => newSelected.add(conv.id));
+    setSelectedForDeletion(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedForDeletion.size === 0) {
+      alert("Please select conversations to delete");
+      return;
+    }
+
+    const message = `Delete ${selectedForDeletion.size} conversation(s)? This cannot be undone.`;
+    if (!confirm(message)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`${API_URL}/conversations/bulk`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_ids: Array.from(selectedForDeletion)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete conversations");
+      }
+
+      const result = await response.json();
+      alert(`Successfully deleted ${result.deleted_count} conversation(s)`);
+
+      setSelectedForDeletion(new Set());
+      await loadDuplicates();
+      onSuccess();
+    } catch (error) {
+      console.error("Delete failed:", error);
+      alert("Failed to delete conversations");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal duplicates-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Find Duplicate Conversations</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <div className="strategy-selector">
+          <label>Detection Method:</label>
+          <select value={strategy} onChange={(e) => setStrategy(e.target.value as typeof strategy)}>
+            <option value="source_id">By Source ID (original conversation ID)</option>
+            <option value="title">By Title (exact match)</option>
+            <option value="both">Both Methods (comprehensive)</option>
+          </select>
+        </div>
+
+        {!loading && duplicates && (
+          <div className="duplicates-summary">
+            <div className="stat">
+              <span className="label">Duplicate Groups:</span>
+              <span className="value">{duplicates.total_groups}</span>
+            </div>
+            <div className="stat">
+              <span className="label">Total Duplicates:</span>
+              <span className="value">{duplicates.total_duplicates}</span>
+            </div>
+            <div className="stat">
+              <span className="label">Selected for Deletion:</span>
+              <span className="value">{selectedForDeletion.size}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="duplicates-content">
+          {loading ? (
+            <div className="loading">Loading duplicates...</div>
+          ) : !duplicates || duplicates.groups.length === 0 ? (
+            <div className="empty">
+              <p>No duplicate conversations found!</p>
+              <small>Try a different detection method or import more conversations.</small>
+            </div>
+          ) : (
+            <div className="duplicate-groups">
+              {duplicates.groups.map((group) => (
+                <div key={group.key} className="duplicate-group">
+                  <div className="group-header" onClick={() => toggleGroupExpanded(group.key)}>
+                    <div className="group-info">
+                      <h3>
+                        {getSourceInfo(group.source).icon} {group.title || "Untitled"}
+                      </h3>
+                      <div className="group-meta">
+                        <span>{group.count} duplicates</span>
+                        <span>•</span>
+                        <span>{group.total_messages} total messages</span>
+                        {group.source_id && (
+                          <>
+                            <span>•</span>
+                            <span>ID: {group.source_id.slice(0, 8)}...</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <button className="expand-btn">
+                      {expandedGroups.has(group.key) ? "▼" : "▶"}
+                    </button>
+                  </div>
+
+                  {expandedGroups.has(group.key) && (
+                    <div className="group-content">
+                      <div className="group-actions">
+                        <button onClick={() => keepNewestInGroup(group)}>
+                          Keep Newest
+                        </button>
+                        <button onClick={() => keepOldestInGroup(group)}>
+                          Keep Oldest
+                        </button>
+                        <button onClick={() => selectAllInGroup(group)}>
+                          Select All
+                        </button>
+                      </div>
+
+                      <div className="conversations-list">
+                        {group.conversations.map((conv) => (
+                          <div key={conv.id} className="duplicate-conversation">
+                            <input
+                              type="checkbox"
+                              checked={selectedForDeletion.has(conv.id)}
+                              onChange={() => toggleSelection(conv.id)}
+                            />
+                            <div className="conv-info">
+                              <div className="conv-title">
+                                {conv.title || "Untitled"}
+                              </div>
+                              <div className="conv-details">
+                                <span>ID: {conv.id}</span>
+                                <span>•</span>
+                                <span>{conv.message_count} messages</span>
+                                {conv.created_at && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{formatDateTime(conv.created_at)}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            className="danger"
+            onClick={handleBulkDelete}
+            disabled={selectedForDeletion.size === 0 || deleting}
+          >
+            {deleting ? "Deleting..." : `Delete Selected (${selectedForDeletion.size})`}
+          </button>
         </div>
       </div>
     </div>
