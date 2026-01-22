@@ -26,6 +26,11 @@ from app.schemas import (
     ImportHistoryListResponse,
     ImportSettingsResponse,
     ImportSettingsUpdate,
+    DuplicateConversation,
+    DuplicateGroup,
+    DuplicateGroupsResponse,
+    BulkDeleteRequest,
+    BulkDeleteResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,6 +205,270 @@ def delete_conversation(
     return {"status": "deleted", "id": str(conversation_id)}
 
 
+# ============ Import Helper Functions ============
+
+def get_import_settings(db: Session) -> ImportSettings | None:
+    """Get the current import settings."""
+    return db.query(ImportSettings).first()
+
+
+def conversation_exists(
+    db: Session,
+    source: str,
+    source_id: str | None
+) -> bool:
+    """Check if a conversation with the given source and source_id already exists."""
+    if not source_id:
+        return False
+
+    existing = db.query(Conversation).filter(
+        Conversation.source == source,
+        Conversation.source_id == source_id
+    ).first()
+
+    return existing is not None
+
+
+# ============ Duplicate Detection Helper Functions ============
+
+def find_duplicates_by_source_id(
+    db: Session,
+    include_nulls: bool = False
+) -> list[DuplicateGroup]:
+    """Find duplicates by (source, source_id) combination."""
+
+    query = (
+        db.query(
+            Conversation.source,
+            Conversation.source_id,
+            func.count(Conversation.id).label('count')
+        )
+        .group_by(Conversation.source, Conversation.source_id)
+        .having(func.count(Conversation.id) > 1)
+    )
+
+    if not include_nulls:
+        query = query.filter(Conversation.source_id != None)
+
+    duplicate_keys = query.all()
+
+    groups = []
+    for source, source_id, count in duplicate_keys:
+        conversations = (
+            db.query(Conversation)
+            .filter(
+                Conversation.source == source,
+                Conversation.source_id == source_id
+            )
+            .order_by(Conversation.created_at.desc().nulls_last())
+            .all()
+        )
+
+        titles = [c.title for c in conversations if c.title]
+        most_common_title = max(set(titles), key=titles.count) if titles else None
+
+        groups.append(DuplicateGroup(
+            key=f"{source}:{source_id or 'null'}",
+            source=source,
+            source_id=source_id,
+            title=most_common_title,
+            count=count,
+            conversations=[DuplicateConversation.model_validate(c) for c in conversations],
+            total_messages=sum(c.message_count for c in conversations)
+        ))
+
+    return groups
+
+
+def find_duplicates_by_title(
+    db: Session,
+    min_title_length: int = 10
+) -> list[DuplicateGroup]:
+    """Find duplicates by exact title match within the same source."""
+
+    query = (
+        db.query(
+            Conversation.source,
+            Conversation.title,
+            func.count(Conversation.id).label('count')
+        )
+        .filter(
+            Conversation.title != None,
+            func.length(Conversation.title) >= min_title_length
+        )
+        .group_by(Conversation.source, Conversation.title)
+        .having(func.count(Conversation.id) > 1)
+    )
+
+    duplicate_keys = query.all()
+
+    groups = []
+    for source, title, count in duplicate_keys:
+        conversations = (
+            db.query(Conversation)
+            .filter(
+                Conversation.source == source,
+                Conversation.title == title
+            )
+            .order_by(Conversation.created_at.desc().nulls_last())
+            .all()
+        )
+
+        groups.append(DuplicateGroup(
+            key=f"{source}:title:{title[:50]}",
+            source=source,
+            source_id=None,
+            title=title,
+            count=count,
+            conversations=[DuplicateConversation.model_validate(c) for c in conversations],
+            total_messages=sum(c.message_count for c in conversations)
+        ))
+
+    return groups
+
+
+def find_duplicates_combined(
+    db: Session,
+    include_nulls: bool = False
+) -> list[DuplicateGroup]:
+    """Combine both strategies: source_id first, then title-based for remaining conversations."""
+
+    source_id_groups = find_duplicates_by_source_id(db, include_nulls)
+
+    duplicate_ids = {
+        conv.id
+        for group in source_id_groups
+        for conv in group.conversations
+    }
+
+    query = (
+        db.query(
+            Conversation.source,
+            Conversation.title,
+            func.count(Conversation.id).label('count')
+        )
+        .filter(
+            Conversation.title != None,
+            func.length(Conversation.title) >= 10
+        )
+        .group_by(Conversation.source, Conversation.title)
+        .having(func.count(Conversation.id) > 1)
+    )
+
+    if duplicate_ids:
+        query = query.filter(~Conversation.id.in_(duplicate_ids))
+
+    duplicate_keys = query.all()
+
+    title_groups = []
+    for source, title, count in duplicate_keys:
+        conversations_query = (
+            db.query(Conversation)
+            .filter(
+                Conversation.source == source,
+                Conversation.title == title
+            )
+        )
+
+        if duplicate_ids:
+            conversations_query = conversations_query.filter(~Conversation.id.in_(duplicate_ids))
+
+        conversations = conversations_query.order_by(Conversation.created_at.desc().nulls_last()).all()
+
+        if len(conversations) > 1:
+            title_groups.append(DuplicateGroup(
+                key=f"{source}:title:{title[:50]}",
+                source=source,
+                source_id=None,
+                title=title,
+                count=len(conversations),
+                conversations=[DuplicateConversation.model_validate(c) for c in conversations],
+                total_messages=sum(c.message_count for c in conversations)
+            ))
+
+    return source_id_groups + title_groups
+
+
+def bulk_delete_conversations(
+    db: Session,
+    conversation_ids: list[int]
+) -> tuple[list[int], list[int]]:
+    """Delete multiple conversations by ID. Returns (deleted_ids, failed_ids)."""
+
+    deleted_ids = []
+    failed_ids = []
+
+    for conv_id in conversation_ids:
+        try:
+            conversation = db.query(Conversation).filter(
+                Conversation.id == conv_id
+            ).first()
+
+            if conversation:
+                db.delete(conversation)
+                db.flush()
+                deleted_ids.append(conv_id)
+            else:
+                failed_ids.append(conv_id)
+        except Exception as e:
+            logger.error(f"Failed to delete conversation {conv_id}: {e}")
+            failed_ids.append(conv_id)
+            db.rollback()
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to commit bulk delete: {e}")
+        failed_ids.extend(deleted_ids)
+        deleted_ids = []
+
+    return deleted_ids, failed_ids
+
+
+# ============ Duplicate Detection Endpoints ============
+
+@app.get("/conversations/duplicates", response_model=DuplicateGroupsResponse)
+def find_duplicates(
+    db: Session = Depends(get_db),
+    strategy: Literal["source_id", "title", "both"] = Query("source_id"),
+    include_nulls: bool = Query(False),
+) -> DuplicateGroupsResponse:
+    """Find duplicate conversations using specified strategy."""
+
+    if strategy == "source_id":
+        groups = find_duplicates_by_source_id(db, include_nulls)
+    elif strategy == "title":
+        groups = find_duplicates_by_title(db)
+    else:
+        groups = find_duplicates_combined(db, include_nulls)
+
+    total_duplicates = sum(group.count for group in groups)
+
+    return DuplicateGroupsResponse(
+        groups=groups,
+        total_duplicates=total_duplicates,
+        total_groups=len(groups),
+        strategy=strategy,
+    )
+
+
+@app.delete("/conversations/bulk")
+def delete_conversations_bulk(
+    request: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+) -> BulkDeleteResponse:
+    """Delete multiple conversations in bulk."""
+
+    deleted_ids, failed_ids = bulk_delete_conversations(db, request.conversation_ids)
+
+    return BulkDeleteResponse(
+        deleted_count=len(deleted_ids),
+        deleted_ids=deleted_ids,
+        failed_ids=failed_ids,
+    )
+
+
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Get overall statistics."""
@@ -268,30 +537,46 @@ async def import_chatgpt(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Get import settings
+    settings = get_import_settings(db)
+    auto_merge = settings.auto_merge_duplicates if settings else False
+
     records: list[Conversation] = []
+    skipped_count = 0
+
     try:
         for item in parsed:
+            # Check if conversation already exists
+            source = item.get("source")
+            source_id = item.get("source_id")
+
+            if auto_merge and conversation_exists(db, source, source_id):
+                skipped_count += 1
+                continue
+
             # Extract messages before creating conversation
             messages_data = item.pop("messages", [])
-            
+
             convo = Conversation(**item)
             db.add(convo)
             db.flush()  # Get the conversation ID
-            
+
             # Add messages
             for msg_data in messages_data:
                 message = Message(conversation_id=convo.id, **msg_data)
                 db.add(message)
-            
+
             records.append(convo)
 
         db.commit()
         for convo in records:
             db.refresh(convo)
-        
+
         # Update import record with success
         import_record.status = "success"
         import_record.imported_count = len(records)
+        if skipped_count > 0:
+            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
         db.commit()
         
     except (ValueError, KeyError) as exc:
@@ -352,28 +637,44 @@ async def import_claude(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Get import settings
+    settings = get_import_settings(db)
+    auto_merge = settings.auto_merge_duplicates if settings else False
+
     records: list[Conversation] = []
+    skipped_count = 0
+
     try:
         for item in parsed:
+            # Check if conversation already exists
+            source = item.get("source")
+            source_id = item.get("source_id")
+
+            if auto_merge and conversation_exists(db, source, source_id):
+                skipped_count += 1
+                continue
+
             messages_data = item.pop("messages", [])
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
-            
+
             for msg_data in messages_data:
                 message = Message(conversation_id=convo.id, **msg_data)
                 db.add(message)
-            
+
             records.append(convo)
 
         db.commit()
         for convo in records:
             db.refresh(convo)
-        
+
         import_record.status = "success"
         import_record.imported_count = len(records)
+        if skipped_count > 0:
+            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
         db.commit()
-        
+
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"
@@ -423,28 +724,44 @@ async def import_gemini(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Get import settings
+    settings = get_import_settings(db)
+    auto_merge = settings.auto_merge_duplicates if settings else False
+
     records: list[Conversation] = []
+    skipped_count = 0
+
     try:
         for item in parsed:
+            # Check if conversation already exists
+            source = item.get("source")
+            source_id = item.get("source_id")
+
+            if auto_merge and conversation_exists(db, source, source_id):
+                skipped_count += 1
+                continue
+
             messages_data = item.pop("messages", [])
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
-            
+
             for msg_data in messages_data:
                 message = Message(conversation_id=convo.id, **msg_data)
                 db.add(message)
-            
+
             records.append(convo)
 
         db.commit()
         for convo in records:
             db.refresh(convo)
-        
+
         import_record.status = "success"
         import_record.imported_count = len(records)
+        if skipped_count > 0:
+            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
         db.commit()
-        
+
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"
@@ -494,28 +811,44 @@ async def import_copilot(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Get import settings
+    settings = get_import_settings(db)
+    auto_merge = settings.auto_merge_duplicates if settings else False
+
     records: list[Conversation] = []
+    skipped_count = 0
+
     try:
         for item in parsed:
+            # Check if conversation already exists
+            source = item.get("source")
+            source_id = item.get("source_id")
+
+            if auto_merge and conversation_exists(db, source, source_id):
+                skipped_count += 1
+                continue
+
             messages_data = item.pop("messages", [])
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
-            
+
             for msg_data in messages_data:
                 message = Message(conversation_id=convo.id, **msg_data)
                 db.add(message)
-            
+
             records.append(convo)
 
         db.commit()
         for convo in records:
             db.refresh(convo)
-        
+
         import_record.status = "success"
         import_record.imported_count = len(records)
+        if skipped_count > 0:
+            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
         db.commit()
-        
+
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"

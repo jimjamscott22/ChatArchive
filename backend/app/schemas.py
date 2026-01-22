@@ -121,3 +121,51 @@ class ImportSettingsUpdate(BaseModel):
     auto_merge_duplicates: bool | None = None
     keep_separate: bool | None = None
     skip_empty_conversations: bool | None = None
+
+
+# ============ Duplicate Detection Schemas ============
+
+class DuplicateConversation(BaseModel):
+    """Conversation info for duplicate detection."""
+    id: int
+    source: str
+    source_id: str | None
+    title: str | None
+    created_at: datetime | None
+    updated_at: datetime | None
+    message_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DuplicateGroup(BaseModel):
+    """A group of duplicate conversations."""
+    key: str
+    source: str
+    source_id: str | None
+    title: str | None
+    count: int
+    conversations: list[DuplicateConversation]
+    total_messages: int
+
+
+class DuplicateGroupsResponse(BaseModel):
+    """Response containing all duplicate groups."""
+    groups: list[DuplicateGroup]
+    total_duplicates: int
+    total_groups: int
+    strategy: str
+
+
+# ============ Bulk Operations Schemas ============
+
+class BulkDeleteRequest(BaseModel):
+    """Request to delete multiple conversations."""
+    conversation_ids: list[int]
+
+
+class BulkDeleteResponse(BaseModel):
+    """Response from bulk delete operation."""
+    deleted_count: int
+    deleted_ids: list[int]
+    failed_ids: list[int] = []
