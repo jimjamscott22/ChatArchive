@@ -14,6 +14,8 @@ type Conversation = {
   created_at?: string | null;
   updated_at?: string | null;
   message_count: number;
+  last_message_preview?: string | null;
+  word_count?: number;
 };
 
 type Message = {
@@ -61,6 +63,8 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [selectedConversationIndex, setSelectedConversationIndex] = useState<number>(-1);
+  const [showStats, setShowStats] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
@@ -71,6 +75,98 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+        return;
+      }
+
+      // Ctrl/Cmd + K: Focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector('.search-box input') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }
+
+      // Ctrl/Cmd + I: Open import modal
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault();
+        setShowImportModal(true);
+      }
+
+      // Ctrl/Cmd + ,: Open settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        setShowSettingsModal(true);
+      }
+
+      // Escape: Close modals
+      if (e.key === 'Escape') {
+        setShowImportModal(false);
+        setShowSettingsModal(false);
+        setShowMenu(false);
+      }
+
+      // Arrow keys: Navigate conversations
+      if (e.key === 'ArrowDown' && conversations.length > 0) {
+        e.preventDefault();
+        const newIndex = Math.min(selectedConversationIndex + 1, conversations.length - 1);
+        setSelectedConversationIndex(newIndex);
+        loadConversation(conversations[newIndex].id);
+      }
+
+      if (e.key === 'ArrowUp' && conversations.length > 0) {
+        e.preventDefault();
+        const newIndex = Math.max(selectedConversationIndex - 1, 0);
+        setSelectedConversationIndex(newIndex);
+        loadConversation(conversations[newIndex].id);
+      }
+
+      // Ctrl/Cmd + E: Export current conversation
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e' && selectedConversation) {
+        e.preventDefault();
+        setShowMenu(!showMenu);
+      }
+
+      // Ctrl/Cmd + B: Toggle sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setSidebarCollapsed(!sidebarCollapsed);
+      }
+
+      // ?: Show keyboard shortcuts help
+      if (e.key === '?' && e.shiftKey) {
+        e.preventDefault();
+        alert(`Keyboard Shortcuts:
+
+⌘/Ctrl + K - Focus search
+⌘/Ctrl + I - Open import
+⌘/Ctrl + , - Settings
+⌘/Ctrl + E - Export menu
+⌘/Ctrl + B - Toggle sidebar
+↑/↓ - Navigate conversations
+ESC - Close modals
+Shift + ? - Show help`);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed, theme]);
+
+  // Update selected index when conversations change
+  useEffect(() => {
+    if (selectedConversation && conversations.length > 0) {
+      const index = conversations.findIndex(c => c.id === selectedConversation.id);
+      setSelectedConversationIndex(index);
+    }
+  }, [selectedConversation, conversations]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -102,6 +198,8 @@ export default function App() {
     }
   };
 
+  const [isSearching, setIsSearching] = useState(false);
+
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     if (!query.trim()) {
@@ -109,6 +207,7 @@ export default function App() {
       return;
     }
 
+    setIsSearching(true);
     try {
       const response = await fetch(
         `${API_URL}/conversations/search?q=${encodeURIComponent(query)}&page_size=100`
@@ -117,6 +216,8 @@ export default function App() {
       setConversations(data.items || []);
     } catch (error) {
       console.error("Search failed:", error);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -148,6 +249,40 @@ export default function App() {
   const getPreview = (title: string | null | undefined): string => {
     if (!title) return "Untitled conversation";
     return title.length > 60 ? title.slice(0, 60) + "..." : title;
+  };
+
+  const getMessagePreview = (conversation: Conversation): string => {
+    if (conversation.last_message_preview) {
+      return conversation.last_message_preview.length > 80 
+        ? conversation.last_message_preview.slice(0, 80) + "..." 
+        : conversation.last_message_preview;
+    }
+    return "No messages yet";
+  };
+
+  const getRelativeTime = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return "";
+    
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return formatDate(dateStr);
+  };
+
+  const estimateReadingTime = (wordCount?: number): string => {
+    if (!wordCount || wordCount === 0) return "";
+    const wordsPerMinute = 200;
+    const minutes = Math.ceil(wordCount / wordsPerMinute);
+    return minutes === 1 ? "1 min read" : `${minutes} min read`;
   };
 
   const getSourceInfo = (source: string) => {
@@ -415,9 +550,16 @@ export default function App() {
             <Sparkles size={20} />
             {!sidebarCollapsed && <span>ChatArchive</span>}
           </div>
-          <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          <div className="header-buttons">
+            {!sidebarCollapsed && (
+              <button className="icon-btn keyboard-shortcut-hint" title="Press Shift+? for keyboard shortcuts">
+                <span className="keyboard-hint">⌨️</span>
+              </button>
+            )}
+            <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
         </div>
 
         <div className="search-box">
@@ -440,44 +582,125 @@ export default function App() {
           Settings
         </button>
 
-        {!sidebarCollapsed && (
-          <div className="source-filter">
-            <label>Filter by source:</label>
-            <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
-              <option value="all">All Sources</option>
-              <option value="chatgpt">💬 ChatGPT</option>
-              <option value="claude">🤖 Claude</option>
-              <option value="gemini">✨ Gemini</option>
-              <option value="copilot">👨‍💻 Copilot</option>
-            </select>
-          </div>
-        )}
+         {!sidebarCollapsed && (
+           <>
+             <div className="source-filter">
+               <label>Filter by source:</label>
+               <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+                 <option value="all">All Sources</option>
+                 <option value="chatgpt">💬 ChatGPT</option>
+                 <option value="claude">🤖 Claude</option>
+                 <option value="gemini">✨ Gemini</option>
+                 <option value="copilot">👨‍💻 Copilot</option>
+               </select>
+             </div>
+
+             <div className="conversation-stats">
+               <div className="stats-header" onClick={() => setShowStats(!showStats)}>
+                 <span className="stats-title">Statistics</span>
+                 <span className="stats-toggle">{showStats ? '▼' : '▶'}</span>
+               </div>
+               {showStats && (
+                 <div className="stats-content">
+                   <div className="stat-item">
+                     <span className="stat-label">Total Conversations</span>
+                     <span className="stat-value">{conversations.length}</span>
+                   </div>
+                   <div className="stat-item">
+                     <span className="stat-label">Total Messages</span>
+                     <span className="stat-value">
+                       {conversations.reduce((sum, conv) => sum + conv.message_count, 0)}
+                     </span>
+                   </div>
+                   <div className="source-breakdown">
+                     <span className="stat-label">By Source</span>
+                     {Object.entries(
+                       conversations.reduce((acc, conv) => {
+                         acc[conv.source] = (acc[conv.source] || 0) + 1;
+                         return acc;
+                       }, {} as Record<string, number>)
+                     ).map(([source, count]) => (
+                       <div key={source} className="source-stat">
+                         <span className="source-indicator" data-source={source}>
+                           {getSourceInfo(source).icon}
+                         </span>
+                         <span className="source-count">{count}</span>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+             </div>
+           </>
+         )}
 
         <div className="conversations-list">
-          {loading ? (
-            <div className="loading">Loading...</div>
+          {loading || isSearching ? (
+            <div className="skeleton-container">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="skeleton-card">
+                  <div className="skeleton-header">
+                    <div className="skeleton-avatar"></div>
+                    <div className="skeleton-info">
+                      <div className="skeleton-title"></div>
+                      <div className="skeleton-meta"></div>
+                    </div>
+                  </div>
+                  <div className="skeleton-preview"></div>
+                </div>
+              ))}
+            </div>
           ) : conversations.length === 0 ? (
-            <div className="empty">No conversations yet</div>
+            <div className="empty-state">
+              <div className="empty-icon">💬</div>
+              <h3>No conversations yet</h3>
+              <p>Import your first conversation to get started with ChatArchive</p>
+              <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
+                <Upload size={16} />
+                Import Conversations
+              </button>
+            </div>
           ) : (
             conversations.map((conv) => (
               <div
                 key={conv.id}
-                className={`conversation-item ${selectedConversation?.id === conv.id ? "active" : ""}`}
+                className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""}`}
                 onClick={() => loadConversation(conv.id)}
               >
-                <div className="conv-header">
-                  <h3 className="conv-title">{conv.title || "Untitled"}</h3>
-                  <span className="conv-date">{formatDate(conv.created_at)}</span>
+                <div className="card-header">
+                  <div className="card-left">
+                    <div className="source-avatar" data-source={conv.source}>
+                      {getSourceInfo(conv.source).icon}
+                    </div>
+                    <div className="conv-info">
+                      <h3 className="conv-title">{conv.title || "Untitled"}</h3>
+                      <div className="conv-meta">
+                        <span className="conv-time">{getRelativeTime(conv.updated_at || conv.created_at)}</span>
+                        <span className="conv-stats">
+                          {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
+                        </span>
+                        {conv.word_count && (
+                          <span className="conv-stats">{estimateReadingTime(conv.word_count)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="card-right">
+                    <span className="tag source" data-source={conv.source}>
+                      {getSourceInfo(conv.source).name}
+                    </span>
+                  </div>
                 </div>
-                <p className="conv-preview">{getPreview(conv.title)}</p>
-                <div className="conv-tags">
-                  {extractTags(conv.title).map((tag, i) => (
-                    <span key={i} className="tag">{tag}</span>
-                  ))}
-                  <span className="tag source" data-source={conv.source}>
-                    {getSourceInfo(conv.source).icon} {getSourceInfo(conv.source).name}
-                  </span>
+                <div className="card-preview">
+                  <p className="conv-preview">{getMessagePreview(conv)}</p>
                 </div>
+                {extractTags(conv.title).length > 0 && (
+                  <div className="card-tags">
+                    {extractTags(conv.title).map((tag, i) => (
+                      <span key={i} className="tag">{tag}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -535,9 +758,30 @@ export default function App() {
             </div>
           ) : (
             <div className="conversation-view">
-              {selectedConversation.messages.map((msg) => (
+              {getOrderedMessages(selectedConversation).map((msg, index) => (
                 <div key={msg.id} className={`message ${msg.role}`}>
-                  <div className="message-role">{msg.role === "user" ? "You" : "Assistant"}</div>
+                  <div className="message-header">
+                    <div className="message-avatar">
+                      {msg.role === "user" ? (
+                        <div className="user-avatar">👤</div>
+                      ) : (
+                        <div className="assistant-avatar" data-source={selectedConversation.source}>
+                          {getSourceInfo(selectedConversation.source).icon}
+                        </div>
+                      )}
+                    </div>
+                    <div className="message-meta">
+                      <div className="message-role">
+                        {msg.role === "user" ? "You" : getSourceInfo(selectedConversation.source).name}
+                      </div>
+                      <div className="message-time">
+                        {formatDateTime(msg.created_at)}
+                        {index < selectedConversation.messages.length - 1 && (
+                          <span className="message-number">Message {index + 1}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <div className="message-content markdown-content">
                     <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
                       {msg.content}
