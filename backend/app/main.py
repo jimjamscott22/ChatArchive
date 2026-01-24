@@ -557,6 +557,9 @@ async def import_chatgpt(
             # Extract messages before creating conversation
             messages_data = item.pop("messages", [])
 
+            # Add import_history_id to track this import
+            item["import_history_id"] = import_record.id
+            
             convo = Conversation(**item)
             db.add(convo)
             db.flush()  # Get the conversation ID
@@ -655,6 +658,10 @@ async def import_claude(
                 continue
 
             messages_data = item.pop("messages", [])
+            
+            # Add import_history_id to track this import
+            item["import_history_id"] = import_record.id
+            
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
@@ -742,6 +749,10 @@ async def import_gemini(
                 continue
 
             messages_data = item.pop("messages", [])
+            
+            # Add import_history_id to track this import
+            item["import_history_id"] = import_record.id
+            
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
@@ -829,6 +840,10 @@ async def import_copilot(
                 continue
 
             messages_data = item.pop("messages", [])
+            
+            # Add import_history_id to track this import
+            item["import_history_id"] = import_record.id
+            
             convo = Conversation(**item)
             db.add(convo)
             db.flush()
@@ -915,6 +930,47 @@ def get_import_history_item(
         raise HTTPException(status_code=404, detail="Import history record not found")
     
     return history_item
+
+
+@app.delete("/import/history/{history_id}")
+def delete_import_history(
+    history_id: int,
+    delete_conversations: bool = Query(True, description="Also delete imported conversations"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete an import history record and optionally its conversations."""
+    
+    history_item = db.query(ImportHistory).filter(ImportHistory.id == history_id).first()
+    
+    if not history_item:
+        raise HTTPException(status_code=404, detail="Import history record not found")
+    
+    deleted_conversations = 0
+    
+    # If delete_conversations is True, delete all conversations from this import
+    if delete_conversations:
+        # Find conversations that were created by this import
+        conversations = db.query(Conversation).filter(
+            Conversation.import_history_id == history_id
+        ).all()
+        
+        deleted_conversations = len(conversations)
+        
+        # Delete the conversations (messages will cascade delete)
+        for conv in conversations:
+            db.delete(conv)
+    
+    # Delete the history record
+    db.delete(history_item)
+    db.commit()
+    
+    return {
+        "deleted": True,
+        "import_id": history_id,
+        "deleted_conversations": deleted_conversations,
+        "message": f"Deleted import history record" + 
+                   (f" and {deleted_conversations} conversations" if delete_conversations else "")
+    }
 
 
 # ============ Import Settings Endpoints ============

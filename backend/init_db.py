@@ -9,7 +9,7 @@ def init_db() -> None:
     """Create all database tables."""
     print("Initializing database...")
     Base.metadata.create_all(bind=engine)
-    print(f"✓ Database initialized successfully")
+    print("[OK] Database initialized successfully")
     print(f"  Location: {engine.url}")
 
 

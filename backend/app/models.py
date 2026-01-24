@@ -21,10 +21,16 @@ class Conversation(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     message_count: Mapped[int] = mapped_column(Integer, default=0)
     raw_json: Mapped[str] = mapped_column(Text)
+    import_history_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("import_history.id", ondelete="SET NULL"), index=True
+    )  # Track which import created this conversation
     
     # Relationships
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
+    )
+    import_history: Mapped["ImportHistory | None"] = relationship(
+        "ImportHistory", back_populates="conversations"
     )
 
 
@@ -64,6 +70,11 @@ class ImportHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     imported_count: Mapped[int] = mapped_column(Integer, default=0)  # Number of conversations imported
     error_message: Mapped[str | None] = mapped_column(Text)  # Error details if failed
+    
+    # Relationships
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation", back_populates="import_history"
+    )
 
 
 class ImportSettings(Base):

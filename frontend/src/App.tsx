@@ -1103,6 +1103,30 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleDeleteImport = async (historyId: number) => {
+    const message = "Delete this import and all its conversations? This cannot be undone.";
+    if (!confirm(message)) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/import/history/${historyId}?delete_conversations=true`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to delete import");
+      }
+      
+      const result = await response.json();
+      alert(`Deleted import and ${result.deleted_conversations} conversation(s)`);
+      
+      // Refresh history list
+      await loadHistory();
+    } catch (error) {
+      console.error("Failed to delete import:", error);
+      alert("Failed to delete import");
+    }
+  };
+
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr);
     return date.toLocaleString("en-US", { 
@@ -1239,7 +1263,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
             <div className="history-panel">
               <div className="history-header">
                 <h3>Past Imports</h3>
-                <p className="text-muted">View logs of all your imports</p>
+                <p className="text-muted">View and manage your import history</p>
               </div>
               {history.length === 0 ? (
                 <div className="empty">No import history yet</div>
@@ -1254,6 +1278,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                         <th>Format</th>
                         <th>Status</th>
                         <th>Imported</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1265,6 +1290,15 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                           <td>{item.file_format.toUpperCase()}</td>
                           <td>{getStatusBadge(item.status)}</td>
                           <td>{item.imported_count} conversations</td>
+                          <td>
+                            <button
+                              className="icon-btn delete-import-btn"
+                              onClick={() => handleDeleteImport(item.id)}
+                              title="Delete this import and its conversations"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
