@@ -92,13 +92,10 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
-<<<<<<< HEAD
   const [selectedConversationIndex, setSelectedConversationIndex] = useState<number>(-1);
   const [showStats, setShowStats] = useState(false);
-=======
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
->>>>>>> origin/main
 
   // Load conversations on mount
   useEffect(() => {
@@ -286,22 +283,7 @@ Shift + ? - Show help`);
       return;
     }
 
-<<<<<<< HEAD
-    setIsSearching(true);
-    try {
-      const response = await fetch(
-        `${API_URL}/conversations/search?q=${encodeURIComponent(query)}&page_size=100`
-      );
-      const data = await response.json();
-      setConversations(data.items || []);
-    } catch (error) {
-      console.error("Search failed:", error);
-    } finally {
-      setIsSearching(false);
-    }
-=======
     await loadSearchResults(query.trim(), 1, sourceFilter);
->>>>>>> origin/main
   };
 
   const extractTags = (title: string | null | undefined): string[] => {
@@ -666,77 +648,62 @@ Shift + ? - Show help`);
           Settings
         </button>
 
-<<<<<<< HEAD
-         {!sidebarCollapsed && (
-           <>
-             <div className="source-filter">
-               <label>Filter by source:</label>
-               <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
-                 <option value="all">All Sources</option>
-                 <option value="chatgpt">💬 ChatGPT</option>
-                 <option value="claude">🤖 Claude</option>
-                 <option value="gemini">✨ Gemini</option>
-                 <option value="copilot">👨‍💻 Copilot</option>
-               </select>
-             </div>
-
-             <div className="conversation-stats">
-               <div className="stats-header" onClick={() => setShowStats(!showStats)}>
-                 <span className="stats-title">Statistics</span>
-                 <span className="stats-toggle">{showStats ? '▼' : '▶'}</span>
-               </div>
-               {showStats && (
-                 <div className="stats-content">
-                   <div className="stat-item">
-                     <span className="stat-label">Total Conversations</span>
-                     <span className="stat-value">{conversations.length}</span>
-                   </div>
-                   <div className="stat-item">
-                     <span className="stat-label">Total Messages</span>
-                     <span className="stat-value">
-                       {conversations.reduce((sum, conv) => sum + conv.message_count, 0)}
-                     </span>
-                   </div>
-                   <div className="source-breakdown">
-                     <span className="stat-label">By Source</span>
-                     {Object.entries(
-                       conversations.reduce((acc, conv) => {
-                         acc[conv.source] = (acc[conv.source] || 0) + 1;
-                         return acc;
-                       }, {} as Record<string, number>)
-                     ).map(([source, count]) => (
-                       <div key={source} className="source-stat">
-                         <span className="source-indicator" data-source={source}>
-                           {getSourceInfo(source).icon}
-                         </span>
-                         <span className="source-count">{count}</span>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
-             </div>
-           </>
-         )}
-=======
         <button className="duplicates-btn" onClick={() => setShowDuplicatesModal(true)}>
           <Copy size={16} />
           Find Duplicates
         </button>
 
         {!sidebarCollapsed && (
-          <div className="source-filter">
-            <label>Filter by source:</label>
-            <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
-              <option value="all">All Sources</option>
-              <option value="chatgpt">💬 ChatGPT</option>
-              <option value="claude">🤖 Claude</option>
-              <option value="gemini">✨ Gemini</option>
-              <option value="copilot">👨‍💻 Copilot</option>
-            </select>
-          </div>
+          <>
+            <div className="source-filter">
+              <label>Filter by source:</label>
+              <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+                <option value="all">All Sources</option>
+                <option value="chatgpt">💬 ChatGPT</option>
+                <option value="claude">🤖 Claude</option>
+                <option value="gemini">✨ Gemini</option>
+                <option value="copilot">👨‍💻 Copilot</option>
+              </select>
+            </div>
+
+            <div className="conversation-stats">
+              <div className="stats-header" onClick={() => setShowStats(!showStats)}>
+                <span className="stats-title">Statistics</span>
+                <span className="stats-toggle">{showStats ? '▼' : '▶'}</span>
+              </div>
+              {showStats && (
+                <div className="stats-content">
+                  <div className="stat-item">
+                    <span className="stat-label">Total Conversations</span>
+                    <span className="stat-value">{conversations.length}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Total Messages</span>
+                    <span className="stat-value">
+                      {conversations.reduce((sum, conv) => sum + conv.message_count, 0)}
+                    </span>
+                  </div>
+                  <div className="source-breakdown">
+                    <span className="stat-label">By Source</span>
+                    {Object.entries(
+                      conversations.reduce((acc, conv) => {
+                        acc[conv.source] = (acc[conv.source] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>)
+                    ).map(([source, count]) => (
+                      <div key={source} className="source-stat">
+                        <span className="source-indicator" data-source={source}>
+                          {getSourceInfo(source).icon}
+                        </span>
+                        <span className="source-count">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
->>>>>>> origin/main
 
         <div className="conversations-list">
           {loading || isSearching ? (
