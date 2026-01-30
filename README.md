@@ -1,6 +1,6 @@
 # ChatArchive
 
-> A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
+## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
 
 ![ChatArchive Preview](https://github.com/jimjamscott22/ChatArchive/blob/main/img/demoUI.png)
 
@@ -85,6 +85,13 @@ All parsers are thoroughly tested with 78 unit and integration tests ensuring ro
    cd frontend
    npm run dev
    ```
+# Find the process
+```bash 
+lsof -i :8000
+
+# Kill it (replace PID with the actual process ID)
+kill <PID>
+```
 
 7. **Open your browser**
    

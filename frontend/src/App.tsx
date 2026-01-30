@@ -318,8 +318,8 @@ Shift + ? - Show help`);
 
   const getMessagePreview = (conversation: Conversation): string => {
     if (conversation.last_message_preview) {
-      return conversation.last_message_preview.length > 80 
-        ? conversation.last_message_preview.slice(0, 80) + "..." 
+      return conversation.last_message_preview.length > 80
+        ? conversation.last_message_preview.slice(0, 80) + "..."
         : conversation.last_message_preview;
     }
     return "No messages yet";
@@ -327,7 +327,7 @@ Shift + ? - Show help`);
 
   const getRelativeTime = (dateStr: string | null | undefined): string => {
     if (!dateStr) return "";
-    
+
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -339,7 +339,7 @@ Shift + ? - Show help`);
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    
+
     return formatDate(dateStr);
   };
 

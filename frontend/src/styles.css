@@ -1989,3 +1989,20 @@ button.danger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Virtual List Optimizations */
+.virtual-list {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.virtual-list > div {
+  will-change: transform;
+}
+
+.conversations-list {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
