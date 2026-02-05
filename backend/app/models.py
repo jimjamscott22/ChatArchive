@@ -32,6 +32,9 @@ class Conversation(Base):
     import_history: Mapped["ImportHistory | None"] = relationship(
         "ImportHistory", back_populates="conversations"
     )
+    tags: Mapped[list["Tag"]] = relationship(
+        "Tag", secondary="conversation_tags", back_populates="conversations"
+    )
 
 
 class Message(Base):
@@ -92,3 +95,37 @@ class ImportSettings(Base):
     
     # Metadata
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(String(255))
+    color: Mapped[str | None] = mapped_column(String(7))  # Hex color code, e.g., #3B82F6
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation", secondary="conversation_tags", back_populates="tags"
+    )
+
+
+class ConversationTag(Base):
+    __tablename__ = "conversation_tags"
+    
+    conversation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    auto_tagged: Mapped[bool] = mapped_column(Boolean, default=False)  # Whether tag was auto-assigned
+    
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index("ix_conversation_tags_conversation", "conversation_id"),
+        Index("ix_conversation_tags_tag", "tag_id"),
+    )

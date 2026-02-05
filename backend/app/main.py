@@ -16,7 +16,7 @@ from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
 from app.importers.gemini import parse_gemini_export
 from app.importers.copilot import parse_copilot_export
-from app.models import Base, Conversation, Message, ImportHistory, ImportSettings
+from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
@@ -31,7 +31,14 @@ from app.schemas import (
     DuplicateGroupsResponse,
     BulkDeleteRequest,
     BulkDeleteResponse,
+    TagCreate,
+    TagResponse,
+    TagListResponse,
+    AddTagRequest,
+    AutoTagRequest,
+    AutoTagResponse,
 )
+from app.tagger import get_tagging_engine
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +66,7 @@ def list_conversations(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     source: str | None = Query(None, description="Filter by source (chatgpt, claude, etc)"),
+    tag: str | None = Query(None, description="Filter by tag name"),
     sort_by: Literal["created_at", "updated_at", "title", "message_count"] = Query(
         "created_at", description="Field to sort by"
     ),
@@ -66,11 +74,15 @@ def list_conversations(
 ) -> ConversationListResponse:
     """List all conversations with pagination and filtering."""
     
-    query = db.query(Conversation)
+    query = db.query(Conversation).options(joinedload(Conversation.tags))
     
     # Apply source filter
     if source:
         query = query.filter(Conversation.source == source)
+    
+    # Apply tag filter
+    if tag:
+        query = query.join(Conversation.tags).filter(Tag.name == tag)
     
     # Get total count
     total = query.count()
@@ -173,7 +185,7 @@ def get_conversation(
     
     conversation = (
         db.query(Conversation)
-        .options(joinedload(Conversation.messages))
+        .options(joinedload(Conversation.messages), joinedload(Conversation.tags))
         .filter(Conversation.id == conversation_id)
         .first()
     )
@@ -1021,6 +1033,252 @@ def update_import_settings(
     db.refresh(settings)
     
     return settings
+
+
+# ============ Tag Endpoints ============
+
+@app.get("/tags", response_model=TagListResponse)
+def list_tags(
+    db: Session = Depends(get_db),
+) -> TagListResponse:
+    """List all tags with their usage counts."""
+    # Get all tags with conversation count
+    tags = db.query(Tag).all()
+    
+    # Calculate conversation count for each tag
+    tag_responses = []
+    for tag in tags:
+        count = db.query(ConversationTag).filter(ConversationTag.tag_id == tag.id).count()
+        tag_response = TagResponse(
+            id=tag.id,
+            name=tag.name,
+            description=tag.description,
+            color=tag.color,
+            created_at=tag.created_at,
+            conversation_count=count,
+        )
+        tag_responses.append(tag_response)
+    
+    return TagListResponse(items=tag_responses, total=len(tag_responses))
+
+
+@app.post("/tags", response_model=TagResponse)
+def create_tag(
+    tag: TagCreate,
+    db: Session = Depends(get_db),
+) -> TagResponse:
+    """Create a new tag."""
+    # Check if tag already exists
+    existing_tag = db.query(Tag).filter(Tag.name == tag.name).first()
+    if existing_tag:
+        raise HTTPException(status_code=400, detail=f"Tag '{tag.name}' already exists")
+    
+    # Create new tag
+    new_tag = Tag(
+        name=tag.name,
+        description=tag.description,
+        color=tag.color,
+    )
+    db.add(new_tag)
+    db.commit()
+    db.refresh(new_tag)
+    
+    return TagResponse(
+        id=new_tag.id,
+        name=new_tag.name,
+        description=new_tag.description,
+        color=new_tag.color,
+        created_at=new_tag.created_at,
+        conversation_count=0,
+    )
+
+
+@app.post("/conversations/{conversation_id}/tags")
+def add_tag_to_conversation(
+    conversation_id: int,
+    request: AddTagRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Add a tag to a conversation."""
+    # Check if conversation exists
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Get or create tag
+    tag = db.query(Tag).filter(Tag.name == request.tag_name).first()
+    if not tag:
+        # Get tag info from tagging engine
+        engine = get_tagging_engine()
+        tag_info = engine.get_tag_info(request.tag_name)
+        
+        if tag_info:
+            tag = Tag(
+                name=tag_info["name"],
+                description=tag_info["description"],
+                color=tag_info["color"],
+            )
+        else:
+            # Create tag with default values
+            tag = Tag(name=request.tag_name)
+        
+        db.add(tag)
+        db.commit()
+        db.refresh(tag)
+    
+    # Check if tag is already assigned
+    existing = db.query(ConversationTag).filter(
+        ConversationTag.conversation_id == conversation_id,
+        ConversationTag.tag_id == tag.id,
+    ).first()
+    
+    if existing:
+        return {"status": "ok", "message": "Tag already assigned to conversation"}
+    
+    # Add tag to conversation
+    conversation_tag = ConversationTag(
+        conversation_id=conversation_id,
+        tag_id=tag.id,
+        auto_tagged=request.auto_tagged,
+    )
+    db.add(conversation_tag)
+    db.commit()
+    
+    return {"status": "ok", "message": "Tag added to conversation"}
+
+
+@app.delete("/conversations/{conversation_id}/tags/{tag_id}")
+def remove_tag_from_conversation(
+    conversation_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Remove a tag from a conversation."""
+    # Check if conversation exists
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Check if tag exists
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    
+    # Remove tag association
+    conversation_tag = db.query(ConversationTag).filter(
+        ConversationTag.conversation_id == conversation_id,
+        ConversationTag.tag_id == tag_id,
+    ).first()
+    
+    if not conversation_tag:
+        raise HTTPException(status_code=404, detail="Tag not assigned to conversation")
+    
+    db.delete(conversation_tag)
+    db.commit()
+    
+    return {"status": "ok", "message": "Tag removed from conversation"}
+
+
+@app.post("/conversations/auto-tag", response_model=AutoTagResponse)
+def auto_tag_conversations(
+    request: AutoTagRequest,
+    db: Session = Depends(get_db),
+) -> AutoTagResponse:
+    """Automatically tag conversations based on content analysis."""
+    engine = get_tagging_engine()
+    
+    # Get conversations to tag
+    if request.conversation_ids:
+        conversations = db.query(Conversation).filter(
+            Conversation.id.in_(request.conversation_ids)
+        ).all()
+    else:
+        conversations = db.query(Conversation).all()
+    
+    if not conversations:
+        raise HTTPException(status_code=404, detail="No conversations found")
+    
+    # Ensure all predefined tags exist in database
+    for tag_info in engine.get_all_tags():
+        existing_tag = db.query(Tag).filter(Tag.name == tag_info["name"]).first()
+        if not existing_tag:
+            new_tag = Tag(
+                name=tag_info["name"],
+                description=tag_info["description"],
+                color=tag_info["color"],
+            )
+            db.add(new_tag)
+    
+    db.commit()
+    
+    # Auto-tag each conversation
+    tagged_count = 0
+    tagged_ids = []
+    tags_added: dict[str, int] = {}
+    
+    for conversation in conversations:
+        # Load messages for content analysis
+        messages = db.query(Message).filter(
+            Message.conversation_id == conversation.id
+        ).order_by(Message.order_index).all()
+        
+        message_data = [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
+        
+        # Classify conversation
+        tag_names = engine.classify_conversation(
+            title=conversation.title,
+            messages=message_data,
+        )
+        
+        if not tag_names:
+            continue
+        
+        # Remove existing auto-tags if overwrite is enabled
+        if request.overwrite_existing:
+            existing_auto_tags = db.query(ConversationTag).filter(
+                ConversationTag.conversation_id == conversation.id,
+                ConversationTag.auto_tagged == True,
+            ).all()
+            for ct in existing_auto_tags:
+                db.delete(ct)
+        
+        # Add new tags
+        tags_added_to_conv = False
+        for tag_name in tag_names:
+            tag = db.query(Tag).filter(Tag.name == tag_name).first()
+            if not tag:
+                continue
+            
+            # Check if already assigned
+            existing = db.query(ConversationTag).filter(
+                ConversationTag.conversation_id == conversation.id,
+                ConversationTag.tag_id == tag.id,
+            ).first()
+            
+            if not existing:
+                conversation_tag = ConversationTag(
+                    conversation_id=conversation.id,
+                    tag_id=tag.id,
+                    auto_tagged=True,
+                )
+                db.add(conversation_tag)
+                tags_added_to_conv = True
+                tags_added[tag_name] = tags_added.get(tag_name, 0) + 1
+        
+        if tags_added_to_conv:
+            tagged_count += 1
+            tagged_ids.append(conversation.id)
+    
+    db.commit()
+    
+    return AutoTagResponse(
+        tagged_count=tagged_count,
+        conversation_ids=tagged_ids,
+        tags_added=tags_added,
+    )
 
 
 if __name__ == "__main__":
