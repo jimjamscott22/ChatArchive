@@ -5,6 +5,40 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
+# ============ Tag Schemas ============
+
+class TagBase(BaseModel):
+    name: str
+    description: str | None = None
+    color: str | None = None
+
+
+class TagCreate(TagBase):
+    """Create a new tag."""
+    pass
+
+
+class TagResponse(TagBase):
+    """Tag with usage statistics."""
+    id: int
+    created_at: datetime
+    conversation_count: int = 0
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TagListResponse(BaseModel):
+    """List of all tags."""
+    items: list[TagResponse]
+    total: int
+
+
+class AddTagRequest(BaseModel):
+    """Request to add a tag to a conversation."""
+    tag_name: str
+    auto_tagged: bool = False
+
+
 # ============ Message Schemas ============
 
 class MessageBase(BaseModel):
@@ -41,6 +75,7 @@ class ConversationBase(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     message_count: int = 0
+    tags: list[TagResponse] = []
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -169,3 +204,18 @@ class BulkDeleteResponse(BaseModel):
     deleted_count: int
     deleted_ids: list[int]
     failed_ids: list[int] = []
+
+
+# ============ Auto-Tagging Schemas ============
+
+class AutoTagRequest(BaseModel):
+    """Request to auto-tag conversations."""
+    conversation_ids: list[int] | None = None  # If None, tag all conversations
+    overwrite_existing: bool = False  # Whether to overwrite manually added tags
+
+
+class AutoTagResponse(BaseModel):
+    """Response from auto-tagging operation."""
+    tagged_count: int
+    conversation_ids: list[int]
+    tags_added: dict[str, int]  # tag_name -> count

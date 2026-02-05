@@ -8,6 +8,8 @@
 
 - **Universal Import**: Support for ChatGPT, Claude, and other LLM export formats
 - **Smart Search**: Full-text search with keyword filtering and advanced queries
+- **Intelligent Tagging**: Automatic conversation categorization with 9 predefined tags (coding, education, writing, business, etc.)
+- **Tag-Based Filtering**: Quickly find conversations by topic
 - **Intuitive Organization**: Tag, categorize, and organize conversations effortlessly
 - **Beautiful UI**: Clean, modern interface with dark/light mode support
 - **Privacy First**: All data stays local - no cloud storage required
@@ -33,10 +35,24 @@ This repo now includes a fully functional FastAPI + React application that suppo
 
 All parsers are thoroughly tested with 78 unit and integration tests ensuring robust parsing and data normalization.
 
+### ✨ New: Intelligent Tagging System
+
+ChatArchive now includes automatic conversation categorization with 9 predefined tags:
+- 🔵 **coding** - Programming and development
+- 🟢 **education** - Academic topics and learning
+- 🟣 **writing** - Creative writing and documentation
+- 🟡 **productivity** - Task management and planning
+- 🔴 **business** - Business and professional topics
+- 🔵 **data-science** - ML, AI, and data analysis
+- 🩷 **tech-support** - Troubleshooting and how-to
+- 🟠 **creative** - Design and creative projects
+- ⚫ **personal** - Personal conversations
+
+See [Tagging Documentation](docs/TAGGING.md) for details on the classification algorithm and customization options.
+
 ### Next Steps
 
 - Enhance search capabilities with semantic search using embeddings
-- Add conversation tagging and categorization features
 - Implement export functionality (Markdown, PDF)
 - Add analytics dashboard for conversation insights
 - Create browser extension for auto-archiving
@@ -131,6 +147,7 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 
 - [API Documentation](docs/API.md)
 - [Import Guide](docs/IMPORT_GUIDE.md)
+- [Tagging System](docs/TAGGING.md)
 - [Development Setup](docs/DEVELOPMENT.md)
 - [Contributing Guidelines](CONTRIBUTING.md)
 
@@ -147,8 +164,9 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 - [x] Search functionality
 - [x] Import history tracking
 - [x] Comprehensive test coverage
+- [x] Intelligent tagging system with 9 predefined categories
+- [x] Tag-based filtering and organization
 - [ ] Full-text search with FTS5
-- [ ] Tag management
 - [ ] Advanced filtering
 - [ ] Semantic search with embeddings
 - [ ] Conversation summaries
