@@ -17,6 +17,16 @@ type Conversation = {
   message_count: number;
   last_message_preview?: string | null;
   word_count?: number;
+  tags?: TagType[];
+};
+
+type TagType = {
+  id: number;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  created_at: string;
+  conversation_count: number;
 };
 
 type Message = {
@@ -96,10 +106,15 @@ export default function App() {
   const [showStats, setShowStats] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [allTags, setAllTags] = useState<TagType[]>([]);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [autoTagging, setAutoTagging] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
     refreshConversationList(1);
+    loadTags();
   }, []);
 
   // Apply theme
@@ -203,7 +218,7 @@ Shift + ? - Show help`);
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const loadConversations = async (source?: string, page = 1) => {
+  const loadConversations = async (source?: string, page = 1, tag?: string | null) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -212,6 +227,9 @@ Shift + ? - Show help`);
       });
       if (source && source !== "all") {
         params.append("source", source);
+      }
+      if (tag) {
+        params.append("tag", tag);
       }
       const response = await fetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
@@ -248,13 +266,14 @@ Shift + ? - Show help`);
     }
   };
 
-  const refreshConversationList = (page = currentPage, source?: string) => {
+  const refreshConversationList = (page = currentPage, source?: string, tag?: string | null) => {
     const nextSource = source ?? sourceFilter;
+    const nextTag = tag ?? selectedTag;
     if (searchQuery.trim()) {
       loadSearchResults(searchQuery.trim(), page, nextSource);
       return;
     }
-    loadConversations(nextSource, page);
+    loadConversations(nextSource, page, nextTag);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -279,11 +298,79 @@ Shift + ? - Show help`);
     setSearchQuery(query);
     setCurrentPage(1);
     if (!query.trim()) {
-      loadConversations(sourceFilter, 1);
+      loadConversations(sourceFilter, 1, selectedTag);
       return;
     }
 
     await loadSearchResults(query.trim(), 1, sourceFilter);
+  };
+
+  // Tag-related functions
+  const loadTags = async () => {
+    try {
+      const response = await fetch(`${API_URL}/tags`);
+      const data = await response.json();
+      setAllTags(data.items || []);
+    } catch (error) {
+      console.error("Failed to load tags:", error);
+    }
+  };
+
+  const handleTagFilter = (tagName: string | null) => {
+    setSelectedTag(tagName);
+    setCurrentPage(1);
+    loadConversations(sourceFilter, 1, tagName);
+  };
+
+  const autoTagAllConversations = async () => {
+    try {
+      setAutoTagging(true);
+      const response = await fetch(`${API_URL}/conversations/auto-tag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ overwrite_existing: false }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to auto-tag conversations');
+      }
+      
+      const result = await response.json();
+      console.log('Auto-tagging result:', result);
+      
+      // Reload conversations and tags
+      await loadTags();
+      refreshConversationList(currentPage);
+      
+      alert(`Successfully tagged ${result.tagged_count} conversations!`);
+    } catch (error) {
+      console.error("Failed to auto-tag conversations:", error);
+      alert("Failed to auto-tag conversations. Please try again.");
+    } finally {
+      setAutoTagging(false);
+    }
+  };
+
+  const removeTagFromConversation = async (conversationId: number, tagId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/conversations/${conversationId}/tags/${tagId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to remove tag');
+      }
+      
+      // Reload the conversation to get updated tags
+      if (selectedConversation?.id === conversationId) {
+        await loadConversation(conversationId);
+      }
+      
+      // Refresh the conversation list
+      refreshConversationList(currentPage);
+    } catch (error) {
+      console.error("Failed to remove tag:", error);
+    }
   };
 
   const extractTags = (title: string | null | undefined): string[] => {
@@ -653,6 +740,16 @@ Shift + ? - Show help`);
           Find Duplicates
         </button>
 
+        <button 
+          className="auto-tag-btn" 
+          onClick={autoTagAllConversations}
+          disabled={autoTagging}
+          title="Automatically tag all conversations based on content"
+        >
+          <Tag size={16} />
+          {autoTagging ? 'Auto-Tagging...' : 'Auto-Tag All'}
+        </button>
+
         {!sidebarCollapsed && (
           <>
             <div className="source-filter">
@@ -663,6 +760,21 @@ Shift + ? - Show help`);
                 <option value="claude">🤖 Claude</option>
                 <option value="gemini">✨ Gemini</option>
                 <option value="copilot">👨‍💻 Copilot</option>
+              </select>
+            </div>
+
+            <div className="tag-filter">
+              <label>Filter by tag:</label>
+              <select 
+                value={selectedTag || 'all'} 
+                onChange={(e) => handleTagFilter(e.target.value === 'all' ? null : e.target.value)}
+              >
+                <option value="all">All Tags</option>
+                {allTags.map((tag) => (
+                  <option key={tag.id} value={tag.name}>
+                    {tag.name} ({tag.conversation_count})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -765,10 +877,25 @@ Shift + ? - Show help`);
                 <div className="card-preview">
                   <p className="conv-preview">{getMessagePreview(conv)}</p>
                 </div>
-                {extractTags(conv.title).length > 0 && (
+                {conv.tags && conv.tags.length > 0 && (
                   <div className="card-tags">
-                    {extractTags(conv.title).map((tag, i) => (
-                      <span key={i} className="tag">{tag}</span>
+                    {conv.tags.map((tag) => (
+                      <span 
+                        key={tag.id} 
+                        className="tag tag-badge" 
+                        style={{
+                          backgroundColor: tag.color || '#6B7280',
+                          color: 'white',
+                          cursor: 'pointer'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTagFilter(tag.name);
+                        }}
+                        title={tag.description || tag.name}
+                      >
+                        {tag.name}
+                      </span>
                     ))}
                   </div>
                 )}
@@ -809,6 +936,35 @@ Shift + ? - Show help`);
           <h2 className="header-title">
             {selectedConversation?.title || "Select a conversation"}
           </h2>
+          {selectedConversation && selectedConversation.tags && selectedConversation.tags.length > 0 && (
+            <div className="conversation-tags-header">
+              {selectedConversation.tags.map((tag) => (
+                <span 
+                  key={tag.id} 
+                  className="tag tag-badge"
+                  style={{
+                    backgroundColor: tag.color || '#6B7280',
+                    color: 'white',
+                  }}
+                  title={tag.description || tag.name}
+                >
+                  {tag.name}
+                  <button
+                    className="tag-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Remove tag "${tag.name}" from this conversation?`)) {
+                        removeTagFromConversation(selectedConversation.id, tag.id);
+                      }
+                    }}
+                    style={{ marginLeft: '4px', cursor: 'pointer', border: 'none', background: 'transparent', color: 'white' }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           {selectedConversation && (
             <div className="header-actions">
               <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
