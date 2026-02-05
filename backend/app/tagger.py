@@ -30,7 +30,7 @@ class TaggingEngine:
             "keywords": [
                 # Programming languages
                 "python", "javascript", "java", "c++", "c#", "ruby", "go", "rust", "swift",
-                "typescript", "php", "kotlin", "scala", "perl", "r ", "matlab",
+                "typescript", "php", "kotlin", "scala", "perl", "r language", "matlab",
                 # Web technologies
                 "html", "css", "react", "vue", "angular", "node", "django", "flask",
                 "fastapi", "express", "next.js", "svelte", "tailwind",

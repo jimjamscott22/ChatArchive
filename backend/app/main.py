@@ -1240,7 +1240,7 @@ def auto_tag_conversations(
         if request.overwrite_existing:
             existing_auto_tags = db.query(ConversationTag).filter(
                 ConversationTag.conversation_id == conversation.id,
-                ConversationTag.auto_tagged == True,
+                ConversationTag.auto_tagged.is_(True),
             ).all()
             for ct in existing_auto_tags:
                 db.delete(ct)
