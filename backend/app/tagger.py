@@ -219,12 +219,12 @@ class TaggingEngine:
             text: Text to search in
             
         Returns:
-            True if keyword is found as a whole word
+            True if keyword is found as a whole word (case-insensitive)
         """
         # Use word boundaries for exact word matching
         # This prevents 'class' from matching 'classical'
         pattern = r'\b' + re.escape(keyword) + r'\b'
-        return bool(re.search(pattern, text))
+        return bool(re.search(pattern, text, re.IGNORECASE))
     
     def get_tag_info(self, tag_name: str) -> Dict[str, str] | None:
         """
