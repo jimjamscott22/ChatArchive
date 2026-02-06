@@ -485,7 +485,7 @@ body {
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .conversation-card::before {
@@ -1998,13 +1998,6 @@ button.danger:disabled {
 
 .virtual-list > div {
   will-change: transform;
-}
-
-.conversations-list {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 /* Tag Styles */
