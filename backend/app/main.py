@@ -32,6 +32,7 @@ from app.schemas import (
     BulkDeleteRequest,
     BulkDeleteResponse,
     TagCreate,
+    TagUpdate,
     TagResponse,
     TagListResponse,
     AddTagRequest,
@@ -1091,6 +1092,69 @@ def create_tag(
         created_at=new_tag.created_at,
         conversation_count=0,
     )
+
+
+@app.put("/tags/{tag_id}", response_model=TagResponse)
+def update_tag(
+    tag_id: int,
+    updates: TagUpdate,
+    db: Session = Depends(get_db),
+) -> TagResponse:
+    """Update an existing tag."""
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    update_data = updates.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        name = update_data["name"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Tag name cannot be empty")
+        existing_tag = (
+            db.query(Tag)
+            .filter(Tag.name == name, Tag.id != tag_id)
+            .first()
+        )
+        if existing_tag:
+            raise HTTPException(status_code=400, detail=f"Tag '{name}' already exists")
+        update_data["name"] = name
+
+    if "description" in update_data:
+        update_data["description"] = update_data["description"] or None
+    if "color" in update_data:
+        update_data["color"] = update_data["color"] or None
+
+    for key, value in update_data.items():
+        setattr(tag, key, value)
+
+    db.commit()
+    db.refresh(tag)
+
+    count = db.query(ConversationTag).filter(ConversationTag.tag_id == tag.id).count()
+    return TagResponse(
+        id=tag.id,
+        name=tag.name,
+        description=tag.description,
+        color=tag.color,
+        created_at=tag.created_at,
+        conversation_count=count,
+    )
+
+
+@app.delete("/tags/{tag_id}")
+def delete_tag(
+    tag_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Delete a tag and remove it from all conversations."""
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    db.delete(tag)
+    db.commit()
+
+    return {"status": "ok", "message": "Tag deleted"}
 
 
 @app.post("/conversations/{conversation_id}/tags")

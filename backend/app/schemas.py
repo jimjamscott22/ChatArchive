@@ -18,6 +18,13 @@ class TagCreate(TagBase):
     pass
 
 
+class TagUpdate(BaseModel):
+    """Update an existing tag."""
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+
+
 class TagResponse(TagBase):
     """Tag with usage statistics."""
     id: int
