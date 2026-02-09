@@ -1367,15 +1367,20 @@ def list_projects(
 ) -> ProjectListResponse:
     """List all projects with conversation counts."""
     
-    projects = db.query(Project).order_by(Project.name).all()
+    # Get all projects with conversation counts in a single query
+    projects_with_counts = (
+        db.query(
+            Project,
+            func.count(Conversation.id).label('conversation_count')
+        )
+        .outerjoin(Conversation, Conversation.project_id == Project.id)
+        .group_by(Project.id)
+        .order_by(Project.name)
+        .all()
+    )
     
-    # Add conversation counts
     project_responses = []
-    for project in projects:
-        conversation_count = db.query(Conversation).filter(
-            Conversation.project_id == project.id
-        ).count()
-        
+    for project, conversation_count in projects_with_counts:
         project_response = ProjectResponse(
             id=project.id,
             name=project.name,
@@ -1504,18 +1509,14 @@ def delete_project(
     project_id: int,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    """Delete a project. Conversations in this project will become uncategorized."""
+    """Delete a project. Conversations in this project will become uncategorized (via ON DELETE SET NULL)."""
     
     project = db.query(Project).filter(Project.id == project_id).first()
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # Set project_id to NULL for all conversations in this project
-    db.query(Conversation).filter(Conversation.project_id == project_id).update(
-        {Conversation.project_id: None}
-    )
-    
+    # Database will automatically set project_id to NULL via ON DELETE SET NULL constraint
     db.delete(project)
     db.commit()
     
