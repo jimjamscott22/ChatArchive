@@ -24,6 +24,9 @@ class Conversation(Base):
     import_history_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("import_history.id", ondelete="SET NULL"), index=True
     )  # Track which import created this conversation
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )  # Project/folder organization
     
     # Relationships
     messages: Mapped[list["Message"]] = relationship(
@@ -34,6 +37,9 @@ class Conversation(Base):
     )
     tags: Mapped[list["Tag"]] = relationship(
         "Tag", secondary="conversation_tags", back_populates="conversations"
+    )
+    project: Mapped["Project | None"] = relationship(
+        "Project", back_populates="conversations"
     )
 
 
@@ -128,4 +134,19 @@ class ConversationTag(Base):
     __table_args__ = (
         Index("ix_conversation_tags_conversation", "conversation_id"),
         Index("ix_conversation_tags_tag", "tag_id"),
+    )
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(String(500))
+    color: Mapped[str | None] = mapped_column(String(7))  # Hex color code, e.g., #3B82F6
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation", back_populates="project"
     )

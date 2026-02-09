@@ -16,7 +16,7 @@ from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
 from app.importers.gemini import parse_gemini_export
 from app.importers.copilot import parse_copilot_export
-from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag
+from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag, Project
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
@@ -38,6 +38,11 @@ from app.schemas import (
     AddTagRequest,
     AutoTagRequest,
     AutoTagResponse,
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectResponse,
+    ProjectListResponse,
+    MoveToProjectRequest,
 )
 from app.tagger import get_tagging_engine
 
@@ -68,6 +73,7 @@ def list_conversations(
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     source: str | None = Query(None, description="Filter by source (chatgpt, claude, etc)"),
     tag: str | None = Query(None, description="Filter by tag name"),
+    project_id: int | None = Query(None, description="Filter by project ID (use -1 for uncategorized)"),
     sort_by: Literal["created_at", "updated_at", "title", "message_count"] = Query(
         "created_at", description="Field to sort by"
     ),
@@ -75,7 +81,7 @@ def list_conversations(
 ) -> ConversationListResponse:
     """List all conversations with pagination and filtering."""
     
-    query = db.query(Conversation).options(joinedload(Conversation.tags))
+    query = db.query(Conversation).options(joinedload(Conversation.tags), joinedload(Conversation.project))
     
     # Apply source filter
     if source:
@@ -84,6 +90,14 @@ def list_conversations(
     # Apply tag filter
     if tag:
         query = query.join(Conversation.tags).filter(Tag.name == tag)
+    
+    # Apply project filter
+    if project_id is not None:
+        if project_id == -1:
+            # -1 means uncategorized (no project)
+            query = query.filter(Conversation.project_id == None)
+        else:
+            query = query.filter(Conversation.project_id == project_id)
     
     # Get total count
     total = query.count()
@@ -186,7 +200,7 @@ def get_conversation(
     
     conversation = (
         db.query(Conversation)
-        .options(joinedload(Conversation.messages), joinedload(Conversation.tags))
+        .options(joinedload(Conversation.messages), joinedload(Conversation.tags), joinedload(Conversation.project))
         .filter(Conversation.id == conversation_id)
         .first()
     )
@@ -1343,6 +1357,202 @@ def auto_tag_conversations(
         conversation_ids=tagged_ids,
         tags_added=tags_added,
     )
+
+
+# ============ Project Endpoints ============
+
+@app.get("/projects", response_model=ProjectListResponse)
+def list_projects(
+    db: Session = Depends(get_db),
+) -> ProjectListResponse:
+    """List all projects with conversation counts."""
+    
+    projects = db.query(Project).order_by(Project.name).all()
+    
+    # Add conversation counts
+    project_responses = []
+    for project in projects:
+        conversation_count = db.query(Conversation).filter(
+            Conversation.project_id == project.id
+        ).count()
+        
+        project_response = ProjectResponse(
+            id=project.id,
+            name=project.name,
+            description=project.description,
+            color=project.color,
+            created_at=project.created_at,
+            conversation_count=conversation_count,
+        )
+        project_responses.append(project_response)
+    
+    return ProjectListResponse(
+        items=project_responses,
+        total=len(project_responses),
+    )
+
+
+@app.post("/projects", response_model=ProjectResponse)
+def create_project(
+    project: ProjectCreate,
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    """Create a new project."""
+    
+    # Check if project with this name already exists
+    existing = db.query(Project).filter(Project.name == project.name).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project with name '{project.name}' already exists"
+        )
+    
+    # Create new project
+    db_project = Project(
+        name=project.name,
+        description=project.description,
+        color=project.color,
+    )
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+    
+    return ProjectResponse(
+        id=db_project.id,
+        name=db_project.name,
+        description=db_project.description,
+        color=db_project.color,
+        created_at=db_project.created_at,
+        conversation_count=0,
+    )
+
+
+@app.get("/projects/{project_id}", response_model=ProjectResponse)
+def get_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    """Get a specific project."""
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    conversation_count = db.query(Conversation).filter(
+        Conversation.project_id == project.id
+    ).count()
+    
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        color=project.color,
+        created_at=project.created_at,
+        conversation_count=conversation_count,
+    )
+
+
+@app.put("/projects/{project_id}", response_model=ProjectResponse)
+def update_project(
+    project_id: int,
+    project_update: ProjectUpdate,
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    """Update a project."""
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if new name conflicts with existing project
+    if project_update.name and project_update.name != project.name:
+        existing = db.query(Project).filter(Project.name == project_update.name).first()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Project with name '{project_update.name}' already exists"
+            )
+        project.name = project_update.name
+    
+    if project_update.description is not None:
+        project.description = project_update.description
+    
+    if project_update.color is not None:
+        project.color = project_update.color
+    
+    db.commit()
+    db.refresh(project)
+    
+    conversation_count = db.query(Conversation).filter(
+        Conversation.project_id == project.id
+    ).count()
+    
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        color=project.color,
+        created_at=project.created_at,
+        conversation_count=conversation_count,
+    )
+
+
+@app.delete("/projects/{project_id}")
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Delete a project. Conversations in this project will become uncategorized."""
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Set project_id to NULL for all conversations in this project
+    db.query(Conversation).filter(Conversation.project_id == project_id).update(
+        {Conversation.project_id: None}
+    )
+    
+    db.delete(project)
+    db.commit()
+    
+    return {"status": "deleted", "id": str(project_id)}
+
+
+@app.post("/conversations/{conversation_id}/move")
+def move_conversation_to_project(
+    conversation_id: int,
+    request: MoveToProjectRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Move a conversation to a project (or remove from project if project_id is None)."""
+    
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Validate project exists if project_id is provided
+    if request.project_id is not None:
+        project = db.query(Project).filter(Project.id == request.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+    
+    old_project_id = conversation.project_id
+    conversation.project_id = request.project_id
+    
+    db.commit()
+    db.refresh(conversation)
+    
+    return {
+        "status": "moved",
+        "conversation_id": conversation_id,
+        "old_project_id": old_project_id,
+        "new_project_id": request.project_id,
+    }
 
 
 if __name__ == "__main__":
