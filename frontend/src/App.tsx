@@ -233,7 +233,6 @@ Shift + ? - Show help`);
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const loadConversations = async (source?: string, page = 1, tag?: string | null) => {
   const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null) => {
     try {
       setLoading(true);
@@ -318,7 +317,7 @@ Shift + ? - Show help`);
     setSearchQuery(query);
     setCurrentPage(1);
     if (!query.trim()) {
-      loadConversations(sourceFilter, 1, selectedTag);
+      loadConversations(sourceFilter, 1, selectedTag, selectedProject);
       return;
     }
 
@@ -364,7 +363,7 @@ Shift + ? - Show help`);
     setSelectedProject(projectId);
     setSelectedTag(null); // Clear tag filter when selecting project
     setCurrentPage(1);
-    refreshConversationList(1);
+    refreshConversationList(1, undefined, null, projectId);
   };
 
   const autoTagAllConversations = async () => {
@@ -548,7 +547,7 @@ Shift + ? - Show help`);
       loadSearchResults(searchQuery.trim(), 1, source);
       return;
     }
-    loadConversations(source, 1);
+    loadConversations(source, 1, null, null);
   };
 
   const handleDeleteConversation = async () => {

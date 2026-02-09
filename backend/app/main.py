@@ -95,7 +95,7 @@ def list_conversations(
     if project_id is not None:
         if project_id == -1:
             # -1 means uncategorized (no project)
-            query = query.filter(Conversation.project_id == None)
+            query = query.filter(Conversation.project_id.is_(None))
         else:
             query = query.filter(Conversation.project_id == project_id)
     
