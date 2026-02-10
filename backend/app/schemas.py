@@ -5,6 +5,46 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
+# ============ Project Schemas ============
+
+class ProjectBase(BaseModel):
+    name: str
+    description: str | None = None
+    color: str | None = None
+
+
+class ProjectCreate(ProjectBase):
+    """Create a new project."""
+    pass
+
+
+class ProjectUpdate(BaseModel):
+    """Update an existing project."""
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+
+
+class ProjectResponse(ProjectBase):
+    """Project with usage statistics."""
+    id: int
+    created_at: datetime
+    conversation_count: int = 0
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectListResponse(BaseModel):
+    """List of all projects."""
+    items: list[ProjectResponse]
+    total: int
+
+
+class MoveToProjectRequest(BaseModel):
+    """Request to move a conversation to a project."""
+    project_id: int | None  # None = move to uncategorized
+
+
 # ============ Tag Schemas ============
 
 class TagBase(BaseModel):
@@ -83,6 +123,7 @@ class ConversationBase(BaseModel):
     updated_at: datetime | None = None
     message_count: int = 0
     tags: list[TagResponse] = []
+    project: ProjectResponse | None = None
     
     model_config = ConfigDict(from_attributes=True)
 

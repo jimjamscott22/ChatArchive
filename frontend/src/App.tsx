@@ -18,9 +18,19 @@ type Conversation = {
   last_message_preview?: string | null;
   word_count?: number;
   tags?: TagType[];
+  project?: ProjectType | null;
 };
 
 type TagType = {
+  id: number;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  created_at: string;
+  conversation_count: number;
+};
+
+type ProjectType = {
   id: number;
   name: string;
   description?: string | null;
@@ -110,11 +120,16 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showTagModal, setShowTagModal] = useState(false);
   const [autoTagging, setAutoTagging] = useState(false);
+  const [allProjects, setAllProjects] = useState<ProjectType[]>([]);
+  const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showMoveToProjectModal, setShowMoveToProjectModal] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
     refreshConversationList(1);
     loadTags();
+    loadProjects();
   }, []);
 
   // Apply theme
@@ -218,7 +233,7 @@ Shift + ? - Show help`);
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const loadConversations = async (source?: string, page = 1, tag?: string | null) => {
+  const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -230,6 +245,9 @@ Shift + ? - Show help`);
       }
       if (tag) {
         params.append("tag", tag);
+      }
+      if (projectId !== null && projectId !== undefined) {
+        params.append("project_id", projectId.toString());
       }
       const response = await fetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
@@ -266,14 +284,15 @@ Shift + ? - Show help`);
     }
   };
 
-  const refreshConversationList = (page = currentPage, source?: string, tag?: string | null) => {
+  const refreshConversationList = (page = currentPage, source?: string, tag?: string | null, projectId?: number | null) => {
     const nextSource = source ?? sourceFilter;
     const nextTag = tag ?? selectedTag;
+    const nextProject = projectId !== undefined ? projectId : selectedProject;
     if (searchQuery.trim()) {
       loadSearchResults(searchQuery.trim(), page, nextSource);
       return;
     }
-    loadConversations(nextSource, page, nextTag);
+    loadConversations(nextSource, page, nextTag, nextProject);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -298,7 +317,7 @@ Shift + ? - Show help`);
     setSearchQuery(query);
     setCurrentPage(1);
     if (!query.trim()) {
-      loadConversations(sourceFilter, 1, selectedTag);
+      loadConversations(sourceFilter, 1, selectedTag, selectedProject);
       return;
     }
 
@@ -320,10 +339,31 @@ Shift + ? - Show help`);
     }
   };
 
+  const loadProjects = async () => {
+    try {
+      const response = await fetch(`${API_URL}/projects`);
+      const data = await response.json();
+      const projects = data.items || [];
+      setAllProjects(projects);
+      if (selectedProject && !projects.some((proj: ProjectType) => proj.id === selectedProject)) {
+        setSelectedProject(null);
+      }
+    } catch (error) {
+      console.error("Failed to load projects:", error);
+    }
+  };
+
   const handleTagFilter = (tagName: string | null) => {
     setSelectedTag(tagName);
     setCurrentPage(1);
     loadConversations(sourceFilter, 1, tagName);
+  };
+
+  const handleProjectFilter = (projectId: number | null) => {
+    setSelectedProject(projectId);
+    setSelectedTag(null); // Clear tag filter when selecting project
+    setCurrentPage(1);
+    refreshConversationList(1, undefined, null, projectId);
   };
 
   const autoTagAllConversations = async () => {
@@ -374,6 +414,55 @@ Shift + ? - Show help`);
       refreshConversationList(currentPage);
     } catch (error) {
       console.error("Failed to remove tag:", error);
+    }
+  };
+
+  const createProject = async (name: string, description: string, color: string) => {
+    try {
+      const response = await fetch(`${API_URL}/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, color }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to create project');
+      }
+      
+      await loadProjects();
+      return true;
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      alert(error instanceof Error ? error.message : 'Failed to create project');
+      return false;
+    }
+  };
+
+  const moveConversationToProject = async (conversationId: number, projectId: number | null) => {
+    try {
+      const response = await fetch(`${API_URL}/conversations/${conversationId}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to move conversation');
+      }
+      
+      // Reload the conversation to get updated project
+      if (selectedConversation?.id === conversationId) {
+        await loadConversation(conversationId);
+      }
+      
+      // Refresh the conversation list and projects
+      await loadProjects();
+      refreshConversationList(currentPage);
+      setShowMoveToProjectModal(false);
+    } catch (error) {
+      console.error("Failed to move conversation:", error);
+      alert('Failed to move conversation to project');
     }
   };
 
@@ -458,7 +547,7 @@ Shift + ? - Show help`);
       loadSearchResults(searchQuery.trim(), 1, source);
       return;
     }
-    loadConversations(source, 1);
+    loadConversations(source, 1, null, null);
   };
 
   const handleDeleteConversation = async () => {
@@ -859,9 +948,39 @@ Shift + ? - Show help`);
               </select>
             </div>
 
+            <div className="project-filter">
+              <label>Filter by project:</label>
+              <select 
+                value={selectedProject !== null ? selectedProject.toString() : 'all'} 
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'all') {
+                    handleProjectFilter(null);
+                  } else if (val === '-1') {
+                    handleProjectFilter(-1);
+                  } else {
+                    handleProjectFilter(parseInt(val));
+                  }
+                }}
+              >
+                <option value="all">All Projects</option>
+                <option value="-1">📂 Uncategorized ({conversations.filter(c => !c.project).length})</option>
+                {allProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    📁 {project.name} ({project.conversation_count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <button className="manage-tags-btn" onClick={() => setShowTagModal(true)}>
               <Tag size={16} />
               Manage Tags
+            </button>
+
+            <button className="manage-projects-btn" onClick={() => setShowProjectModal(true)}>
+              <Settings size={16} />
+              Manage Projects
             </button>
 
             <div className="conversation-stats">
@@ -989,6 +1108,29 @@ Shift + ? - Show help`);
                     ))}
                   </div>
                 )}
+                {conv.project && (
+                  <div className="card-project">
+                    <span 
+                      className="project-badge" 
+                      style={{
+                        backgroundColor: conv.project.color || '#8B5CF6',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'inline-block',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleProjectFilter(conv.project!.id);
+                      }}
+                      title={conv.project.description || conv.project.name}
+                    >
+                      📁 {conv.project.name}
+                    </span>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -1062,6 +1204,10 @@ Shift + ? - Show help`);
               </button>
               {showMenu && (
                 <div className="dropdown-menu">
+                  <button className="menu-item" onClick={() => { setShowMoveToProjectModal(true); setShowMenu(false); }}>
+                    <Settings size={16} />
+                    Move to project
+                  </button>
                   <button className="menu-item" onClick={handleDeleteConversation}>
                     <Trash2 size={16} />
                     Delete conversation
@@ -1155,6 +1301,23 @@ Shift + ? - Show help`);
           tags={allTags}
           onClose={() => setShowTagModal(false)}
           onTagsUpdated={loadTags}
+        />
+      )}
+
+      {showProjectModal && (
+        <ProjectManagerModal
+          projects={allProjects}
+          onClose={() => setShowProjectModal(false)}
+          onProjectsUpdated={loadProjects}
+        />
+      )}
+
+      {showMoveToProjectModal && selectedConversation && (
+        <MoveToProjectModal
+          conversation={selectedConversation}
+          projects={allProjects}
+          onClose={() => setShowMoveToProjectModal(false)}
+          onMove={moveConversationToProject}
         />
       )}
     </div>
@@ -2038,6 +2201,251 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           >
             {deleting ? "Deleting..." : `Delete Selected (${selectedForDeletion.size})`}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectManagerModal({
+  projects,
+  onClose,
+  onProjectsUpdated,
+}: {
+  projects: ProjectType[];
+  onClose: () => void;
+  onProjectsUpdated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [color, setColor] = useState("#8B5CF6");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setColor("#8B5CF6");
+    setError(null);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setStatus(null);
+    setError(null);
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Project name is required.");
+      return;
+    }
+
+    const payload = {
+      name: trimmedName,
+      description: description.trim() || null,
+      color: color.trim() || null,
+    };
+
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_URL}/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to create project.");
+      }
+
+      await onProjectsUpdated();
+      resetForm();
+      setStatus("Project created.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create project.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (project: ProjectType) => {
+    const message = `Delete project "${project.name}"? Conversations will become uncategorized.`;
+    if (!confirm(message)) return;
+
+    setSaving(true);
+    setStatus(null);
+    setError(null);
+    try {
+      const response = await fetch(`${API_URL}/projects/${project.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to delete project.");
+      }
+      await onProjectsUpdated();
+      setStatus("Project deleted.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete project.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content tag-manager-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Manage Projects</h2>
+          <button className="icon-btn" onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <form onSubmit={handleSubmit} className="tag-form">
+            <h3>Create New Project</h3>
+            <input
+              type="text"
+              placeholder="Project name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={saving}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={saving}
+            />
+            <div className="color-picker">
+              <label>Color:</label>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <button type="submit" disabled={saving}>
+              {saving ? "Creating..." : "Create Project"}
+            </button>
+            {status && <div className="status-message success">{status}</div>}
+            {error && <div className="status-message error">{error}</div>}
+          </form>
+
+          <div className="existing-tags">
+            <h3>Existing Projects ({projects.length})</h3>
+            {projects.length === 0 ? (
+              <p className="empty-message">No projects yet. Create one above!</p>
+            ) : (
+              <div className="tag-list">
+                {projects.map((project) => (
+                  <div key={project.id} className="tag-item">
+                    <div className="tag-info">
+                      <span
+                        className="tag-color"
+                        style={{ backgroundColor: project.color || "#8B5CF6" }}
+                      ></span>
+                      <div className="tag-details">
+                        <strong>{project.name}</strong>
+                        {project.description && <p>{project.description}</p>}
+                        <small>{project.conversation_count} conversations</small>
+                      </div>
+                    </div>
+                    <div className="tag-actions">
+                      <button
+                        className="delete-btn"
+                        onClick={() => handleDelete(project)}
+                        disabled={saving}
+                        title="Delete project"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MoveToProjectModal({
+  conversation,
+  projects,
+  onClose,
+  onMove,
+}: {
+  conversation: ConversationDetail;
+  projects: ProjectType[];
+  onClose: () => void;
+  onMove: (conversationId: number, projectId: number | null) => Promise<void>;
+}) {
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
+    conversation.project?.id || null
+  );
+  const [moving, setMoving] = useState(false);
+
+  const handleMove = async () => {
+    setMoving(true);
+    try {
+      await onMove(conversation.id, selectedProjectId);
+      onClose();
+    } catch (error) {
+      console.error("Failed to move conversation:", error);
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+        <div className="modal-header">
+          <h2>Move to Project</h2>
+          <button className="icon-btn" onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p><strong>Conversation:</strong> {conversation.title || "Untitled"}</p>
+          <p><strong>Current Project:</strong> {conversation.project?.name || "Uncategorized"}</p>
+          
+          <div style={{ marginTop: '20px' }}>
+            <label><strong>Move to:</strong></label>
+            <select
+              value={selectedProjectId !== null ? selectedProjectId.toString() : "none"}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedProjectId(val === "none" ? null : parseInt(val));
+              }}
+              style={{ width: '100%', marginTop: '10px', padding: '8px' }}
+            >
+              <option value="none">📂 Uncategorized</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  📁 {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button onClick={onClose} disabled={moving}>
+              Cancel
+            </button>
+            <button onClick={handleMove} disabled={moving} className="primary-btn">
+              {moving ? "Moving..." : "Move"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
