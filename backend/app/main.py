@@ -8,6 +8,7 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
 
@@ -617,14 +618,48 @@ async def import_chatgpt(
         db.commit()
         logger.error(f"Import validation error for {file.filename}: {exc}")
         raise HTTPException(status_code=400, detail="Invalid data format") from exc
+    except IntegrityError as exc:
+        # Handle database constraint violations (duplicates, foreign keys, etc.)
+        db.rollback()
+        import_record.status = "failure"
+        error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
+        import_record.error_message = f"Database constraint violation: {error_msg}"
+        db.commit()
+        logger.error(f"Import integrity error for {file.filename}: {exc}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Database constraint violation: {error_msg}"
+        ) from exc
+    except OperationalError as exc:
+        # Handle database operational errors (locks, connection issues, etc.)
+        db.rollback()
+        import_record.status = "failure"
+        error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
+        import_record.error_message = f"Database operation failed: {error_msg}"
+        db.commit()
+        logger.error(f"Import operational error for {file.filename}: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database temporarily unavailable: {error_msg}"
+        ) from exc
     except Exception as exc:
         # Handle unexpected errors without exposing internals
         db.rollback()
         import_record.status = "failure"
-        import_record.error_message = "An error occurred during import"
+
+        # Provide more detailed error information for debugging
+        error_type = type(exc).__name__
+        error_detail = str(exc)
+        import_record.error_message = f"{error_type}: {error_detail}"
         db.commit()
+
         logger.exception(f"Unexpected error during import of {file.filename}")
-        raise HTTPException(status_code=500, detail="Import failed")
+
+        # Return detailed error for debugging (sanitize in production)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Import failed: {error_type} - {error_detail}"
+        )
 
     return records
 
