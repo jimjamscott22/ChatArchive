@@ -12,12 +12,14 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
 
-from app.database import get_db
+from app.database import get_db, DATABASE_MODE
 from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
 from app.importers.gemini import parse_gemini_export
 from app.importers.copilot import parse_copilot_export
 from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag, Project
+from app.supabase_client import get_connection_info, get_dashboard_url, is_supabase_configured
+from app.storage import upload_export_file, list_storage_files
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
@@ -536,6 +538,17 @@ async def import_chatgpt(
 
     raw = await file.read()
     
+    # Upload raw export file to Supabase storage if configured
+    if is_supabase_configured():
+        try:
+            upload_export_file(
+                filename=file.filename,
+                content=raw,
+                source_type="chatgpt",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to upload file to Supabase storage: {e}")
+    
     # Create import history record
     import_record = ImportHistory(
         filename=file.filename,
@@ -675,6 +688,17 @@ async def import_claude(
 
     raw = await file.read()
     
+    # Upload raw export file to Supabase storage if configured
+    if is_supabase_configured():
+        try:
+            upload_export_file(
+                filename=file.filename,
+                content=raw,
+                source_type="claude",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to upload file to Supabase storage: {e}")
+    
     import_record = ImportHistory(
         filename=file.filename,
         source_type="claude",
@@ -766,6 +790,17 @@ async def import_gemini(
 
     raw = await file.read()
     
+    # Upload raw export file to Supabase storage if configured
+    if is_supabase_configured():
+        try:
+            upload_export_file(
+                filename=file.filename,
+                content=raw,
+                source_type="gemini",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to upload file to Supabase storage: {e}")
+    
     import_record = ImportHistory(
         filename=file.filename,
         source_type="gemini",
@@ -856,6 +891,17 @@ async def import_copilot(
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
+    
+    # Upload raw export file to Supabase storage if configured
+    if is_supabase_configured():
+        try:
+            upload_export_file(
+                filename=file.filename,
+                content=raw,
+                source_type="copilot",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to upload file to Supabase storage: {e}")
     
     import_record = ImportHistory(
         filename=file.filename,
@@ -1588,6 +1634,111 @@ def move_conversation_to_project(
         "conversation_id": conversation_id,
         "old_project_id": old_project_id,
         "new_project_id": request.project_id,
+    }
+
+
+# ============ Supabase Settings & Sync Endpoints ============
+
+@app.get("/settings/supabase")
+def get_supabase_settings() -> dict[str, Any]:
+    """Get Supabase connection status and configuration (without exposing keys)."""
+    connection_info = get_connection_info()
+    return {
+        "status": "connected" if connection_info["configured"] else "disconnected",
+        "configured": connection_info["configured"],
+        "url": connection_info["url"],
+        "project_id": connection_info["project_id"],
+        "bucket_name": connection_info["bucket_name"],
+        "database_mode": DATABASE_MODE,
+    }
+
+
+@app.get("/settings/supabase-dashboard-url")
+def get_supabase_dashboard() -> dict[str, Any]:
+    """Get the Supabase admin dashboard URL."""
+    dashboard_url = get_dashboard_url()
+    
+    if not dashboard_url:
+        raise HTTPException(
+            status_code=404,
+            detail="Supabase not configured or project ID not available"
+        )
+    
+    return {
+        "dashboard_url": dashboard_url,
+        "configured": is_supabase_configured(),
+    }
+
+
+@app.get("/storage/files")
+def list_storage(
+    source_type: str | None = Query(None, description="Filter by source type"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum files to return"),
+    offset: int = Query(0, ge=0, description="Number of files to skip"),
+) -> dict[str, Any]:
+    """List files in Supabase storage bucket."""
+    if not is_supabase_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase storage not configured"
+        )
+    
+    files = list_storage_files(source_type=source_type, limit=limit, offset=offset)
+    
+    if files is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list storage files"
+        )
+    
+    return {
+        "files": files,
+        "count": len(files),
+        "source_type": source_type,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.post("/sync/upload")
+def sync_to_supabase(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """
+    Manually trigger sync of local data to Supabase.
+    This is a placeholder - full implementation would involve complex data syncing logic.
+    """
+    if not is_supabase_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured"
+        )
+    
+    # Get count of local conversations
+    conversation_count = db.query(func.count(Conversation.id)).scalar()
+    
+    return {
+        "status": "not_implemented",
+        "message": "Manual sync to Supabase is not yet fully implemented. Use the migration script instead.",
+        "local_conversations": conversation_count,
+        "database_mode": DATABASE_MODE,
+    }
+
+
+@app.post("/sync/download")
+def sync_from_supabase(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """
+    Pull data from Supabase to local database.
+    This is a placeholder - full implementation would involve complex data syncing logic.
+    """
+    if not is_supabase_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured"
+        )
+    
+    return {
+        "status": "not_implemented",
+        "message": "Manual sync from Supabase is not yet fully implemented. The app uses Supabase directly when configured.",
+        "database_mode": DATABASE_MODE,
     }
 
 
