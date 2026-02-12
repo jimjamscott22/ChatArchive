@@ -113,6 +113,72 @@ kill <PID>
    
    Navigate to `http://localhost:5173`
 
+## 🗄️ Supabase Integration (Optional)
+
+ChatArchive supports optional Supabase integration for cloud storage and PostgreSQL database, enabling multi-device access to your conversation history.
+
+### Setting Up Supabase
+
+1. **Create a Supabase Project**
+   - Go to [supabase.com](https://supabase.com) and create a free account
+   - Create a new project and wait for it to initialize
+
+2. **Get Your Credentials**
+   - Go to Project Settings → API
+   - Copy your **Project URL** and **anon public** key
+   - Go to Project Settings → API and copy your **service_role key**
+   - Go to Project Settings → Database and copy your **database password** (or create a new one)
+
+3. **Configure Environment Variables**
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
+   
+   Edit `.env` and add your Supabase credentials:
+   ```env
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   SUPABASE_DB_PASSWORD=your-database-password
+   SUPABASE_BUCKET_NAME=chatarchive-exports
+   ```
+   
+   **Security Note**: Always use a dedicated database password (`SUPABASE_DB_PASSWORD`) rather than reusing the service role key for enhanced security.
+
+4. **Create Storage Bucket**
+   - In Supabase Dashboard, go to Storage
+   - Create a new bucket named `chatarchive-exports`
+   - Set it to private (recommended)
+
+5. **Initialize Database Schema**
+   
+   When you start the app with Supabase credentials configured, it will automatically use PostgreSQL instead of SQLite. The schema will be created automatically on first run.
+
+6. **Migrate Existing Data (Optional)**
+   
+   If you have existing conversations in SQLite and want to migrate to Supabase:
+   ```bash
+   cd backend
+   python migrate_to_supabase.py
+   ```
+
+### Benefits of Supabase Integration
+
+- ✅ **Cloud Storage**: Raw export files backed up to Supabase storage
+- ✅ **PostgreSQL Database**: More robust than SQLite for large datasets
+- ✅ **Multi-Device Access**: Access your conversations from multiple devices
+- ✅ **Automatic Backups**: Supabase handles database backups
+- ✅ **Real-time Sync**: Changes sync across devices (future feature)
+
+### Supabase Dashboard Access
+
+When Supabase is configured, a database icon will appear in the ChatArchive header. Click it to open your Supabase admin dashboard directly.
+
+### Fallback to SQLite
+
+If Supabase credentials are not configured, ChatArchive automatically falls back to local SQLite storage. Your data remains private and local to your machine.
+
 ## 📦 Importing Your Chats
 
 ### ChatGPT

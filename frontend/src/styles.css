@@ -161,6 +161,18 @@ body {
   height: 32px;
 }
 
+.supabase-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.supabase-link:hover {
+  color: #3ecf8e; /* Supabase brand green */
+}
+
 .search-box {
   margin: 12px;
   position: relative;
