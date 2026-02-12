@@ -24,9 +24,16 @@ if DATABASE_MODE == "postgresql":
     # We need to construct: postgresql://postgres:[password]@db.<project-ref>.supabase.co:5432/postgres
     try:
         project_ref = SUPABASE_URL.replace("https://", "").replace("http://", "").split(".")[0]
-        # For Supabase, we use the service role key as password for direct database connection
-        # Note: In production, you might want to use a dedicated database password
-        db_password = os.getenv("SUPABASE_DB_PASSWORD", SUPABASE_SERVICE_ROLE_KEY)
+        # Use dedicated database password if provided, otherwise default to service role key
+        # Note: In production, SUPABASE_DB_PASSWORD should be set to a dedicated database password
+        # for security reasons rather than using the service role key
+        db_password = os.getenv("SUPABASE_DB_PASSWORD")
+        if not db_password:
+            db_password = SUPABASE_SERVICE_ROLE_KEY
+            # Log warning in development
+            import logging
+            logging.warning("SUPABASE_DB_PASSWORD not set, using service role key as fallback. " +
+                          "For production, set a dedicated database password.")
         DATABASE_URL = f"postgresql://postgres:{db_password}@db.{project_ref}.supabase.co:5432/postgres"
     except Exception:
         # Fallback to SQLite if URL parsing fails

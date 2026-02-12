@@ -126,7 +126,8 @@ ChatArchive supports optional Supabase integration for cloud storage and Postgre
 2. **Get Your Credentials**
    - Go to Project Settings → API
    - Copy your **Project URL** and **anon public** key
-   - Go to Project Settings → Database and copy your **service_role key**
+   - Go to Project Settings → API and copy your **service_role key**
+   - Go to Project Settings → Database and copy your **database password** (or create a new one)
 
 3. **Configure Environment Variables**
    ```bash
@@ -139,8 +140,11 @@ ChatArchive supports optional Supabase integration for cloud storage and Postgre
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your-anon-key
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   SUPABASE_DB_PASSWORD=your-database-password
    SUPABASE_BUCKET_NAME=chatarchive-exports
    ```
+   
+   **Security Note**: Always use a dedicated database password (`SUPABASE_DB_PASSWORD`) rather than reusing the service role key for enhanced security.
 
 4. **Create Storage Bucket**
    - In Supabase Dashboard, go to Storage

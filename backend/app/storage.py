@@ -56,7 +56,7 @@ def upload_export_file(
             file=content,
             file_options={
                 "content-type": "application/json",
-                "upsert": "true"  # Allow overwriting if file exists
+                "upsert": True  # Allow overwriting if file exists
             }
         )
         
