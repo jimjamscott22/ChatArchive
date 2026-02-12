@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -124,12 +124,15 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showMoveToProjectModal, setShowMoveToProjectModal] = useState(false);
+  const [supabaseDashboardUrl, setSupabaseDashboardUrl] = useState<string | null>(null);
+  const [supabaseConfigured, setSupabaseConfigured] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
     refreshConversationList(1);
     loadTags();
     loadProjects();
+    checkSupabaseConfiguration();
   }, []);
 
   // Apply theme
@@ -364,6 +367,24 @@ Shift + ? - Show help`);
     setSelectedTag(null); // Clear tag filter when selecting project
     setCurrentPage(1);
     refreshConversationList(1, undefined, null, projectId);
+  };
+
+  const checkSupabaseConfiguration = async () => {
+    try {
+      const response = await fetch(`${API_URL}/settings/supabase-dashboard-url`);
+      if (response.ok) {
+        const data = await response.json();
+        setSupabaseDashboardUrl(data.dashboard_url);
+        setSupabaseConfigured(data.configured);
+      } else {
+        setSupabaseConfigured(false);
+        setSupabaseDashboardUrl(null);
+      }
+    } catch (error) {
+      console.error("Failed to check Supabase configuration:", error);
+      setSupabaseConfigured(false);
+      setSupabaseDashboardUrl(null);
+    }
   };
 
   const autoTagAllConversations = async () => {
@@ -874,6 +895,17 @@ Shift + ? - Show help`);
             {!sidebarCollapsed && <span>ChatArchive</span>}
           </div>
           <div className="header-buttons">
+            {!sidebarCollapsed && supabaseConfigured && supabaseDashboardUrl && (
+              <a
+                href={supabaseDashboardUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="icon-btn supabase-link"
+                title="Open Supabase Dashboard"
+              >
+                <Database size={18} />
+              </a>
+            )}
             {!sidebarCollapsed && (
               <button className="icon-btn keyboard-shortcut-hint" title="Press Shift+? for keyboard shortcuts">
                 <span className="keyboard-hint">⌨️</span>
