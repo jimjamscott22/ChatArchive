@@ -1577,26 +1577,60 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     }
   };
 
-  const sourceInfo = {
+  type SourceInfo = {
+    name: string;
+    description: string;
+    icon: string;
+    exportUrl?: string;
+    exportSteps: string[];
+  };
+
+  const sourceInfo: Record<'chatgpt' | 'claude' | 'gemini' | 'copilot', SourceInfo> = {
     chatgpt: {
       name: 'ChatGPT',
       description: 'OpenAI ChatGPT conversations.json export',
       icon: '💬',
+      exportUrl: 'https://chatgpt.com/#settings/DataControls',
+      exportSteps: [
+        'Go to ChatGPT Settings → Data Controls → Export Data',
+        'Click "Export" and wait for the email confirmation',
+        'Download the archive and extract conversations.json',
+      ],
     },
     claude: {
       name: 'Claude',
       description: 'Anthropic Claude conversation export',
       icon: '🤖',
+      exportUrl: 'https://claude.ai/settings',
+      exportSteps: [
+        'Visit claude.ai/settings',
+        'Navigate to "Data & Privacy"',
+        'Click "Request your data export"',
+        'Wait for the email with your export (may take a few hours)',
+        'Download and extract the JSON file',
+      ],
     },
     gemini: {
       name: 'Gemini',
       description: 'Google Gemini/Bard conversation export',
       icon: '✨',
+      exportUrl: 'https://takeout.google.com/',
+      exportSteps: [
+        'Visit Google Takeout',
+        'Deselect all products, then select only "Gemini Apps Activity"',
+        'Choose JSON format and create export',
+        'Wait for the download link, then download and extract',
+      ],
     },
     copilot: {
       name: 'GitHub Copilot',
       description: 'GitHub Copilot Chat conversation export',
       icon: '👨‍💻',
+      exportSteps: [
+        'In VS Code: Extensions → Copilot → Settings → Export Chat History',
+        'Or on GitHub.com: Visit your Copilot settings and request an export',
+        'Download the JSON file',
+      ],
     },
   };
 
@@ -1657,6 +1691,20 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             </select>
             <p className="source-description">{sourceInfo[source].description}</p>
           </div>
+
+          <details className="export-help">
+            <summary>📥 Need your export file? Here's how to get it</summary>
+            <ol>
+              {sourceInfo[source].exportSteps.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
+            {sourceInfo[source].exportUrl && (
+              <a href={sourceInfo[source].exportUrl} target="_blank" rel="noopener noreferrer" className="export-link">
+                → Open {sourceInfo[source].name} export page
+              </a>
+            )}
+          </details>
 
           <div className="form-group">
             <label htmlFor="file-input">Select File</label>
