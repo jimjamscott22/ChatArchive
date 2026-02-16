@@ -1692,21 +1692,19 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
             <p className="source-description">{sourceInfo[source].description}</p>
           </div>
 
-          {sourceInfo[source].exportSteps && (
-            <details className="export-help">
-              <summary>📥 Need your export file? Here's how to get it</summary>
-              <ol>
-                {sourceInfo[source].exportSteps.map((step, i) => (
-                  <li key={i}>{step}</li>
-                ))}
-              </ol>
-              {sourceInfo[source].exportUrl && (
-                <a href={sourceInfo[source].exportUrl} target="_blank" rel="noopener noreferrer" className="export-link">
-                  → Open {sourceInfo[source].name} export page
-                </a>
-              )}
-            </details>
-          )}
+          <details className="export-help">
+            <summary>📥 Need your export file? Here's how to get it</summary>
+            <ol>
+              {sourceInfo[source].exportSteps.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
+            {sourceInfo[source].exportUrl && (
+              <a href={sourceInfo[source].exportUrl} target="_blank" rel="noopener noreferrer" className="export-link">
+                → Open {sourceInfo[source].name} export page
+              </a>
+            )}
+          </details>
 
           <div className="form-group">
             <label htmlFor="file-input">Select File</label>
