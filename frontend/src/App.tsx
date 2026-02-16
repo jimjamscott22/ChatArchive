@@ -1577,7 +1577,15 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     }
   };
 
-  const sourceInfo = {
+  type SourceInfo = {
+    name: string;
+    description: string;
+    icon: string;
+    exportUrl?: string;
+    exportSteps: string[];
+  };
+
+  const sourceInfo: Record<'chatgpt' | 'claude' | 'gemini' | 'copilot', SourceInfo> = {
     chatgpt: {
       name: 'ChatGPT',
       description: 'OpenAI ChatGPT conversations.json export',
@@ -1588,7 +1596,6 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         'Click "Export" and wait for the email confirmation',
         'Download the archive and extract conversations.json',
       ],
-      expectedFile: 'conversations.json',
     },
     claude: {
       name: 'Claude',
@@ -1602,7 +1609,6 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         'Wait for the email with your export (may take a few hours)',
         'Download and extract the JSON file',
       ],
-      expectedFile: 'Claude export JSON',
     },
     gemini: {
       name: 'Gemini',
@@ -1615,19 +1621,16 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         'Choose JSON format and create export',
         'Wait for the download link, then download and extract',
       ],
-      expectedFile: 'Gemini JSON export',
     },
     copilot: {
       name: 'GitHub Copilot',
       description: 'GitHub Copilot Chat conversation export',
       icon: '👨‍💻',
-      exportUrl: null,
       exportSteps: [
         'In VS Code: Extensions → Copilot → Settings → Export Chat History',
         'Or on GitHub.com: Visit your Copilot settings and request an export',
         'Download the JSON file',
       ],
-      expectedFile: 'Copilot JSON export',
     },
   };
 
