@@ -120,3 +120,4 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml
+env_4_chatarchive.txt
