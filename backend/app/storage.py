@@ -46,6 +46,17 @@ def upload_export_file(
         if isinstance(content, str):
             content = content.encode('utf-8')
         
+        # Skip upload if file exceeds Supabase free-tier limit (50 MB)
+        MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+        if len(content) > MAX_UPLOAD_BYTES:
+            size_mb = len(content) / (1024 * 1024)
+            logger.warning(
+                f"Skipping Supabase storage upload for {filename}: "
+                f"file size {size_mb:.1f} MB exceeds the 50 MB limit. "
+                "Increase the bucket's file size limit in the Supabase Dashboard to enable uploads."
+            )
+            return {"success": False, "error": "File too large for storage upload (>50 MB)"}
+        
         # Create a unique path: source_type/YYYY-MM-DD/filename
         timestamp = datetime.utcnow().strftime("%Y-%m-%d")
         storage_path = f"{source_type}/{timestamp}/{filename}"
@@ -56,7 +67,7 @@ def upload_export_file(
             file=content,
             file_options={
                 "content-type": "application/json",
-                "upsert": True  # Allow overwriting if file exists
+                "upsert": "true"  # Allow overwriting if file exists
             }
         )
         

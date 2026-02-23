@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Maximize2, Minimize2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -100,11 +100,19 @@ type DuplicatesData = {
   strategy: string;
 };
 
+// Check if we're in standalone conversation view (opened in new window)
+function getInitialConversationId(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("conversation");
+  return id ? parseInt(id, 10) : null;
+}
+
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [standaloneMode, setStandaloneMode] = useState(() => getInitialConversationId() !== null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
@@ -126,6 +134,8 @@ export default function App() {
   const [showMoveToProjectModal, setShowMoveToProjectModal] = useState(false);
   const [supabaseDashboardUrl, setSupabaseDashboardUrl] = useState<string | null>(null);
   const [supabaseConfigured, setSupabaseConfigured] = useState(false);
+  const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
+  const [fullWidthConvo, setFullWidthConvo] = useState(false);
 
   // Load conversations on mount
   useEffect(() => {
@@ -134,6 +144,14 @@ export default function App() {
     loadProjects();
     checkSupabaseConfiguration();
   }, []);
+
+  // When in standalone mode (opened via ?conversation=id), load that conversation
+  useEffect(() => {
+    const convId = getInitialConversationId();
+    if (convId && standaloneMode) {
+      loadConversation(convId);
+    }
+  }, [standaloneMode]);
 
   // Apply theme
   useEffect(() => {
@@ -312,6 +330,12 @@ Shift + ? - Show help`);
     } catch (error) {
       console.error("Failed to load conversation:", error);
     }
+  };
+
+  const openConversationInNewWindow = (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const url = `${window.location.origin}${window.location.pathname}?conversation=${id}`;
+    window.open(url, "_blank", "noopener,noreferrer,width=900,height=700");
   };
 
   const [isSearching, setIsSearching] = useState(false);
@@ -885,8 +909,68 @@ Shift + ? - Show help`);
   const highlightQuery = searchQuery.trim();
   const markdownComponents = highlightQuery ? getHighlightMarkdownComponents(highlightQuery) : undefined;
 
+  // Standalone mode: show only the conversation (opened in new window)
+  if (standaloneMode) {
+    return (
+      <div className="app-container standalone-view">
+        <div className="standalone-header">
+          <h1 className="standalone-title">{selectedConversation?.title || "Loading..."}</h1>
+          <a
+            href={window.location.pathname}
+            target="_self"
+            className="icon-btn back-link"
+            title="Back to ChatArchive"
+          >
+            ← Back to ChatArchive
+          </a>
+        </div>
+        <div className="standalone-content">
+          {selectedConversation ? (
+            <div className="conversation-view">
+              {getOrderedMessages(selectedConversation).map((msg, index) => (
+                <div key={msg.id} className={`message ${msg.role}`}>
+                  <div className="message-header">
+                    <div className="message-avatar">
+                      {msg.role === "user" ? (
+                        <div className="user-avatar">👤</div>
+                      ) : (
+                        <div className="assistant-avatar" data-source={selectedConversation.source}>
+                          {getSourceInfo(selectedConversation.source).icon}
+                        </div>
+                      )}
+                    </div>
+                    <div className="message-meta">
+                      <div className="message-role">
+                        {msg.role === "user" ? "You" : getSourceInfo(selectedConversation.source).name}
+                      </div>
+                      <div className="message-time">
+                        {formatDateTime(msg.created_at)}
+                        {index < selectedConversation.messages.length - 1 && (
+                          <span className="message-number">Message {index + 1}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="message-content markdown-content">
+                    <ReactMarkdown rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="welcome-state">
+              <p>Loading conversation...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="app-container">
+    <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}`}>
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
@@ -953,7 +1037,7 @@ Shift + ? - Show help`);
         </button>
 
         {!sidebarCollapsed && (
-          <>
+          <div className="sidebar-filters">
             <div className="source-filter">
               <label>Filter by source:</label>
               <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
@@ -1051,10 +1135,10 @@ Shift + ? - Show help`);
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
 
-        <div className="conversations-list">
+        <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar">
           {loading || isSearching ? (
             <div className="skeleton-container">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -1074,7 +1158,7 @@ Shift + ? - Show help`);
             <div className="empty-state">
               <div className="empty-icon">💬</div>
               <h3>No conversations yet</h3>
-              <p>Import your first conversation to get started with ChatArchive</p>
+              <p>Import your first conversation to get started</p>
               <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
                 <Upload size={16} />
                 Import Conversations
@@ -1108,6 +1192,13 @@ Shift + ? - Show help`);
                     </div>
                   </div>
                   <div className="card-right">
+                    <button
+                      className="icon-btn open-new-window-btn"
+                      title="Open in new window"
+                      onClick={(e) => openConversationInNewWindow(conv.id, e)}
+                    >
+                      <ExternalLink size={16} />
+                    </button>
                     <span className="tag source" data-source={conv.source}>
                       {getSourceInfo(conv.source).name}
                     </span>
@@ -1189,14 +1280,32 @@ Shift + ? - Show help`);
             </button>
           </div>
         )}
+
+        {/* Sidebar collapse handle */}
+        <button
+          className="sidebar-collapse-handle"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
       </aside>
 
       {/* Main Content */}
       <main className="main-content">
         <header className="main-header">
-          <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
+          <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
             <Menu size={20} />
           </button>
+          {selectedConversation && (
+            <button
+              className="icon-btn"
+              onClick={() => setFullWidthConvo(!fullWidthConvo)}
+              title={fullWidthConvo ? "Show sidebar" : "Full width view"}
+            >
+              {fullWidthConvo ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+          )}
           <h2 className="header-title">
             {selectedConversation?.title || "Select a conversation"}
           </h2>
@@ -1266,12 +1375,149 @@ Shift + ? - Show help`);
           )}
         </header>
 
-        <div className="content-area">
+        <div className="content-area content-area-scrollable">
           {!selectedConversation ? (
-            <div className="welcome-state">
-              <Sparkles size={48} className="welcome-icon" />
-              <h2>Welcome to ChatArchive</h2>
-              <p>Select a conversation from the sidebar or import your chat history to get started</p>
+            <div className="center-conversations-wrapper">
+              <div
+                className="center-conversations-header collapsible-header"
+                onClick={() => setConversationListCollapsed(!conversationListCollapsed)}
+                title={conversationListCollapsed ? "Expand conversation list" : "Collapse conversation list"}
+              >
+                <div className="center-header-left">
+                  <h2>Your conversations</h2>
+                  {!conversationListCollapsed && (
+                    <p className="center-subtitle">
+                      Click any conversation to open it in a new window, or select from the sidebar to preview here
+                    </p>
+                  )}
+                </div>
+                <button className="icon-btn collapse-list-btn" tabIndex={-1}>
+                  {conversationListCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </button>
+              </div>
+              {!conversationListCollapsed && (
+                <>
+                  {(loading || isSearching) ? (
+                    <div className="skeleton-container center-skeleton">
+                      {Array.from({ length: 8 }).map((_, i) => (
+                        <div key={i} className="skeleton-card">
+                          <div className="skeleton-header">
+                            <div className="skeleton-avatar"></div>
+                            <div className="skeleton-info">
+                              <div className="skeleton-title"></div>
+                              <div className="skeleton-meta"></div>
+                            </div>
+                          </div>
+                          <div className="skeleton-preview"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : conversations.length === 0 ? (
+                    <div className="welcome-state">
+                      <Sparkles size={48} className="welcome-icon" />
+                      <h2>Welcome to ChatArchive</h2>
+                      <p>Import your chat history to get started</p>
+                      <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
+                        <Upload size={16} />
+                        Import Conversations
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="center-conversations-list">
+                      {(conversations as Conversation[]).map((conv: Conversation) => (
+                        <div
+                          key={conv.id}
+                          className="conversation-card center-card"
+                          onClick={() => loadConversation(conv.id)}
+                        >
+                          <div className="card-header">
+                            <div className="card-left">
+                              <div className="source-avatar" data-source={conv.source}>
+                                {getSourceInfo(conv.source).icon}
+                              </div>
+                              <div className="conv-info">
+                                <h3 className="conv-title">
+                                  {renderHighlightedText(conv.title || "Untitled", highlightQuery)}
+                                </h3>
+                                <div className="conv-meta">
+                                  <span className="conv-time">{getRelativeTime(conv.updated_at || conv.created_at)}</span>
+                                  <span className="conv-stats">
+                                    {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
+                                  </span>
+                                  {conv.word_count && (
+                                    <span className="conv-stats">{estimateReadingTime(conv.word_count)}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="card-right">
+                              <button
+                                className="icon-btn open-new-window-btn primary-action"
+                                title="Open in new window"
+                                onClick={(e) => openConversationInNewWindow(conv.id, e)}
+                              >
+                                <ExternalLink size={16} />
+                                Open in new window
+                              </button>
+                              <span className="tag source" data-source={conv.source}>
+                                {getSourceInfo(conv.source).name}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="card-preview">
+                            <p className="conv-preview">
+                              {renderHighlightedText(getMessagePreview(conv), highlightQuery)}
+                            </p>
+                          </div>
+                          {conv.tags && conv.tags.length > 0 && (
+                            <div className="card-tags">
+                              {conv.tags.map((tag: TagType) => (
+                                <span
+                                  key={tag.id}
+                                  className="tag tag-badge"
+                                  style={{
+                                    backgroundColor: tag.color || '#6B7280',
+                                    color: 'white',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTagFilter(tag.name);
+                                  }}
+                                  title={tag.description || tag.name}
+                                >
+                                  {tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!loading && !isSearching && conversations.length > 0 && totalPages > 1 && (
+                    <div className="center-pagination">
+                      <button
+                        className="pagination-btn"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                      >
+                        ← Prev
+                      </button>
+                      <span className="pagination-info">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        className="pagination-btn"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <div className="conversation-view">

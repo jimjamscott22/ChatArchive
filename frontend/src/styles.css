@@ -56,8 +56,56 @@ body {
 
 .app-container {
   display: flex;
+  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Full-page scroll: allow the app to scroll when content overflows */
+.app-container.scrollable {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Standalone conversation view (opened in new window) */
+.app-container.standalone-view {
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+.standalone-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--gradient-subtle);
+  flex-shrink: 0;
+}
+
+.standalone-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.back-link {
+  text-decoration: none;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.back-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.standalone-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
 }
 
 /* ===== SIDEBAR ===== */
@@ -70,6 +118,41 @@ body {
   overflow: hidden;
   transition: width 0.3s ease;
   position: relative;
+  flex-shrink: 0;
+}
+
+/* Hide sidebar entirely in full-width mode */
+.sidebar-hidden .sidebar {
+  width: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+/* Sidebar collapse handle — a small tab on the right edge */
+.sidebar-collapse-handle {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  z-index: 20;
+  transition: background 0.2s, color 0.2s;
+  padding: 0;
+}
+
+.sidebar-collapse-handle:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
 }
 
 .sidebar::before {
@@ -89,7 +172,8 @@ body {
 
 .sidebar.collapsed .search-box,
 .sidebar.collapsed .import-btn,
-.sidebar.collapsed .conversations-list,
+.sidebar.collapsed .sidebar-list,
+.sidebar.collapsed .sidebar-filters,
 .sidebar.collapsed .pagination-controls {
   display: none;
 }
@@ -628,7 +712,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 8px;
+}
+
+.center-card .card-right {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .card-preview {
@@ -988,6 +1079,109 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+}
+
+.content-area-scrollable {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Centered conversation list in main content */
+.center-conversations-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.center-conversations-header {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  user-select: none;
+}
+
+.center-conversations-header:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.center-conversations-header.collapsible-header {
+  margin-bottom: 16px;
+}
+
+.center-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.center-conversations-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.center-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.collapse-list-btn {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.center-conversations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversation-card.center-card {
+  max-width: 100%;
+}
+
+.open-new-window-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.open-new-window-btn.primary-action {
+  background: var(--accent);
+  color: white;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.open-new-window-btn.primary-action:hover {
+  background: var(--accent-hover);
+}
+
+.center-skeleton {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.center-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
 }
 
 .content-area::-webkit-scrollbar {
