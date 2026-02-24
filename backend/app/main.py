@@ -24,7 +24,6 @@ from app.schemas import (
     ConversationResponse,
     ConversationDetail,
     ConversationListResponse,
-    MessageResponse,
     ImportHistoryResponse,
     ImportHistoryListResponse,
     ImportSettingsResponse,
@@ -191,6 +190,31 @@ def search_conversations(
         page=page,
         page_size=page_size,
         pages=pages,
+    )
+
+
+@app.get("/conversations/duplicates", response_model=DuplicateGroupsResponse)
+def find_duplicates(
+    db: Session = Depends(get_db),
+    strategy: Literal["source_id", "title", "both"] = Query("source_id"),
+    include_nulls: bool = Query(False),
+) -> DuplicateGroupsResponse:
+    """Find duplicate conversations using specified strategy."""
+
+    if strategy == "source_id":
+        groups = find_duplicates_by_source_id(db, include_nulls)
+    elif strategy == "title":
+        groups = find_duplicates_by_title(db)
+    else:
+        groups = find_duplicates_combined(db, include_nulls)
+
+    total_duplicates = sum(group.count for group in groups)
+
+    return DuplicateGroupsResponse(
+        groups=groups,
+        total_duplicates=total_duplicates,
+        total_groups=len(groups),
+        strategy=strategy,
     )
 
 
@@ -454,33 +478,6 @@ def bulk_delete_conversations(
         deleted_ids = []
 
     return deleted_ids, failed_ids
-
-
-# ============ Duplicate Detection Endpoints ============
-
-@app.get("/conversations/duplicates", response_model=DuplicateGroupsResponse)
-def find_duplicates(
-    db: Session = Depends(get_db),
-    strategy: Literal["source_id", "title", "both"] = Query("source_id"),
-    include_nulls: bool = Query(False),
-) -> DuplicateGroupsResponse:
-    """Find duplicate conversations using specified strategy."""
-
-    if strategy == "source_id":
-        groups = find_duplicates_by_source_id(db, include_nulls)
-    elif strategy == "title":
-        groups = find_duplicates_by_title(db)
-    else:
-        groups = find_duplicates_combined(db, include_nulls)
-
-    total_duplicates = sum(group.count for group in groups)
-
-    return DuplicateGroupsResponse(
-        groups=groups,
-        total_duplicates=total_duplicates,
-        total_groups=len(groups),
-        strategy=strategy,
-    )
 
 
 @app.delete("/conversations/bulk")
