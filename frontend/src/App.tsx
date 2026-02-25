@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Maximize2, Minimize2 } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Maximize2, Minimize2, BarChart2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -93,6 +93,18 @@ type DuplicateGroup = {
   total_messages: number;
 };
 
+type AnalyticsData = {
+  total_conversations: number;
+  total_messages: number;
+  avg_messages_per_conversation: number;
+  sources: Record<string, number>;
+  conversations_by_month: { month: string; count: number }[];
+  role_distribution: Record<string, number>;
+  activity_by_day: Record<string, number>;
+  top_tags: { name: string; color: string; count: number }[];
+  projects: { name: string; color: string; count: number }[];
+};
+
 type DuplicatesData = {
   groups: DuplicateGroup[];
   total_duplicates: number;
@@ -116,6 +128,7 @@ export default function App() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -192,6 +205,7 @@ export default function App() {
       if (e.key === 'Escape') {
         setShowImportModal(false);
         setShowSettingsModal(false);
+        setShowAnalyticsModal(false);
         setShowMenu(false);
       }
 
@@ -1026,8 +1040,13 @@ Shift + ? - Show help`);
           Find Duplicates
         </button>
 
-        <button 
-          className="auto-tag-btn" 
+        <button className="analytics-btn" onClick={() => setShowAnalyticsModal(true)}>
+          <BarChart2 size={16} />
+          Analytics
+        </button>
+
+        <button
+          className="auto-tag-btn"
           onClick={autoTagAllConversations}
           disabled={autoTagging}
           title="Automatically tag all conversations based on content"
@@ -1597,6 +1616,10 @@ Shift + ? - Show help`);
           onClose={() => setShowMoveToProjectModal(false)}
           onMove={moveConversationToProject}
         />
+      )}
+
+      {showAnalyticsModal && (
+        <AnalyticsDashboard onClose={() => setShowAnalyticsModal(false)} />
       )}
     </div>
   );
@@ -2698,6 +2721,327 @@ function ProjectManagerModal({
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsDashboard({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/analytics`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d) => { setData(d); setLoading(false); })
+      .catch((e) => { setError(e.message); setLoading(false); });
+  }, []);
+
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const SOURCE_COLORS: Record<string, string> = {
+    chatgpt: "#10B981",
+    claude: "#F59E0B",
+    gemini: "#3B82F6",
+    copilot: "#8B5CF6",
+  };
+
+  const ROLE_COLORS: Record<string, string> = {
+    user: "#3B82F6",
+    assistant: "#10B981",
+    system: "#F59E0B",
+    tool: "#EC4899",
+  };
+
+  function HorizontalBar({ label, value, max, color, count }: {
+    label: string; value: number; max: number; color: string; count: number;
+  }) {
+    const pct = max > 0 ? (value / max) * 100 : 0;
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+          <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{label}</span>
+          <span style={{ color: "var(--text-secondary)" }}>{count.toLocaleString()}</span>
+        </div>
+        <div style={{ height: 8, background: "var(--bg-tertiary)", borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.4s ease" }} />
+        </div>
+      </div>
+    );
+  }
+
+  function TimelineChart({ months }: { months: { month: string; count: number }[] }) {
+    if (months.length === 0) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data yet.</p>;
+    const maxCount = Math.max(...months.map((m) => m.count), 1);
+    const chartH = 120;
+    const barW = Math.max(16, Math.min(40, Math.floor(560 / months.length) - 4));
+    const gap = 4;
+    const totalW = months.length * (barW + gap);
+
+    return (
+      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+        <svg width={Math.max(totalW, 200)} height={chartH + 36} style={{ display: "block" }}>
+          {months.map((m, i) => {
+            const barH = Math.max(2, (m.count / maxCount) * chartH);
+            const x = i * (barW + gap);
+            const labelYear = m.month.slice(0, 4);
+            const labelMon = m.month.slice(5, 7);
+            const isJan = labelMon === "01";
+            return (
+              <g key={m.month}>
+                <rect
+                  x={x}
+                  y={chartH - barH}
+                  width={barW}
+                  height={barH}
+                  fill="#3B82F6"
+                  rx={3}
+                  opacity={0.85}
+                >
+                  <title>{m.month}: {m.count}</title>
+                </rect>
+                {(isJan || months.length <= 18) && (
+                  <text
+                    x={x + barW / 2}
+                    y={chartH + 16}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fill="var(--text-muted)"
+                  >
+                    {isJan ? labelYear : labelMon}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  }
+
+  function DayChart({ activityByDay }: { activityByDay: Record<string, number> }) {
+    const values = DAY_NAMES.map((_, i) => activityByDay[String(i)] || 0);
+    const max = Math.max(...values, 1);
+    const chartH = 80;
+    const barW = 32;
+    const gap = 6;
+
+    return (
+      <svg width={DAY_NAMES.length * (barW + gap)} height={chartH + 28} style={{ display: "block" }}>
+        {DAY_NAMES.map((name, i) => {
+          const barH = Math.max(2, (values[i] / max) * chartH);
+          const x = i * (barW + gap);
+          return (
+            <g key={name}>
+              <rect x={x} y={chartH - barH} width={barW} height={barH} fill="#8B5CF6" rx={3} opacity={0.85}>
+                <title>{name}: {values[i]}</title>
+              </rect>
+              <text x={x + barW / 2} y={chartH + 16} textAnchor="middle" fontSize={10} fill="var(--text-muted)">
+                {name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
+
+  const overlayStyle: React.CSSProperties = {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)",
+    zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center",
+    overflowY: "auto", padding: "24px 16px",
+  };
+
+  const panelStyle: React.CSSProperties = {
+    background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+    borderRadius: 16, width: "100%", maxWidth: 860, padding: 32,
+    boxShadow: "0 16px 48px rgba(0,0,0,0.4)", position: "relative",
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    marginBottom: 32,
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    fontSize: 15, fontWeight: 600, color: "var(--text-primary)",
+    marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid var(--border-color)",
+  };
+
+  const cardRowStyle: React.CSSProperties = {
+    display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32,
+  };
+
+  const cardStyle: React.CSSProperties = {
+    background: "var(--bg-tertiary)", borderRadius: 12, padding: "20px 24px",
+    border: "1px solid var(--border-color)",
+  };
+
+  const twoColStyle: React.CSSProperties = {
+    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32,
+  };
+
+  return (
+    <div className="modal-overlay" style={overlayStyle} onClick={onClose}>
+      <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <BarChart2 size={22} style={{ color: "#3B82F6" }} />
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+              Conversation Analytics
+            </h2>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={onClose}
+            style={{ fontSize: 20, lineHeight: 1 }}
+            title="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {loading && (
+          <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-secondary)" }}>
+            Loading analytics…
+          </div>
+        )}
+
+        {error && (
+          <div style={{ textAlign: "center", padding: "48px 0", color: "#EF4444" }}>
+            Failed to load analytics: {error}
+          </div>
+        )}
+
+        {data && (
+          <>
+            {/* Summary cards */}
+            <div style={cardRowStyle}>
+              <div style={cardStyle}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "#3B82F6" }}>
+                  {data.total_conversations.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Total Conversations</div>
+              </div>
+              <div style={cardStyle}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "#10B981" }}>
+                  {data.total_messages.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Total Messages</div>
+              </div>
+              <div style={cardStyle}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "#F59E0B" }}>
+                  {data.avg_messages_per_conversation.toFixed(1)}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Avg Messages / Conv.</div>
+              </div>
+            </div>
+
+            {/* Activity over time */}
+            <div style={sectionStyle}>
+              <div style={sectionTitleStyle}>Conversations Over Time</div>
+              <TimelineChart months={data.conversations_by_month} />
+            </div>
+
+            <div style={twoColStyle}>
+              {/* Source distribution */}
+              <div style={sectionStyle}>
+                <div style={sectionTitleStyle}>By Source</div>
+                {Object.keys(data.sources).length === 0 ? (
+                  <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data.</p>
+                ) : (() => {
+                  const maxSrc = Math.max(...Object.values(data.sources));
+                  return Object.entries(data.sources)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([src, cnt]) => (
+                      <HorizontalBar
+                        key={src}
+                        label={src.charAt(0).toUpperCase() + src.slice(1)}
+                        value={cnt}
+                        max={maxSrc}
+                        color={SOURCE_COLORS[src] || "#6B7280"}
+                        count={cnt}
+                      />
+                    ));
+                })()}
+              </div>
+
+              {/* Role distribution */}
+              <div style={sectionStyle}>
+                <div style={sectionTitleStyle}>Messages by Role</div>
+                {Object.keys(data.role_distribution).length === 0 ? (
+                  <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data.</p>
+                ) : (() => {
+                  const maxRole = Math.max(...Object.values(data.role_distribution));
+                  return Object.entries(data.role_distribution)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([role, cnt]) => (
+                      <HorizontalBar
+                        key={role}
+                        label={role.charAt(0).toUpperCase() + role.slice(1)}
+                        value={cnt}
+                        max={maxRole}
+                        color={ROLE_COLORS[role] || "#6B7280"}
+                        count={cnt}
+                      />
+                    ));
+                })()}
+              </div>
+            </div>
+
+            <div style={twoColStyle}>
+              {/* Activity by day of week */}
+              <div style={sectionStyle}>
+                <div style={sectionTitleStyle}>Activity by Day of Week</div>
+                <DayChart activityByDay={data.activity_by_day} />
+              </div>
+
+              {/* Top tags */}
+              {data.top_tags.length > 0 && (
+                <div style={sectionStyle}>
+                  <div style={sectionTitleStyle}>Top Tags</div>
+                  {(() => {
+                    const maxTag = Math.max(...data.top_tags.map((t) => t.count));
+                    return data.top_tags.map((tag) => (
+                      <HorizontalBar
+                        key={tag.name}
+                        label={tag.name}
+                        value={tag.count}
+                        max={maxTag}
+                        color={tag.color}
+                        count={tag.count}
+                      />
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Projects breakdown */}
+            {data.projects.length > 0 && (
+              <div style={sectionStyle}>
+                <div style={sectionTitleStyle}>Conversations by Project</div>
+                {(() => {
+                  const maxProj = Math.max(...data.projects.map((p) => p.count));
+                  return data.projects.map((proj) => (
+                    <HorizontalBar
+                      key={proj.name}
+                      label={proj.name}
+                      value={proj.count}
+                      max={maxProj}
+                      color={proj.color}
+                      count={proj.count}
+                    />
+                  ));
+                })()}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -2047,6 +2047,30 @@ body {
   border-color: var(--accent);
 }
 
+.analytics-btn {
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.analytics-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: #3B82F6;
+  color: #3B82F6;
+}
+
 .duplicates-modal {
   width: 900px;
   max-width: 90vw;

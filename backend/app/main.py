@@ -499,21 +499,21 @@ def delete_conversations_bulk(
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Get overall statistics."""
-    
+
     total_conversations = db.query(Conversation).count()
     total_messages = db.query(Message).count()
-    
+
     # Get counts by source
     source_counts = (
         db.query(Conversation.source, func.count(Conversation.id))
         .group_by(Conversation.source)
         .all()
     )
-    
+
     # Get date range
     oldest = db.query(func.min(Conversation.created_at)).scalar()
     newest = db.query(func.max(Conversation.created_at)).scalar()
-    
+
     return {
         "total_conversations": total_conversations,
         "total_messages": total_messages,
@@ -522,6 +522,104 @@ def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
             "oldest": oldest.isoformat() if oldest else None,
             "newest": newest.isoformat() if newest else None,
         }
+    }
+
+
+@app.get("/analytics")
+def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Get detailed analytics data for the conversation insights dashboard."""
+
+    # Totals
+    total_conversations = db.query(Conversation).count()
+    total_messages = db.query(Message).count()
+    avg_msgs = db.query(func.avg(Conversation.message_count)).scalar() or 0
+
+    # Source breakdown
+    source_counts = (
+        db.query(Conversation.source, func.count(Conversation.id))
+        .group_by(Conversation.source)
+        .all()
+    )
+
+    # Conversations grouped by month (database-agnostic)
+    if DATABASE_MODE == "postgresql":
+        month_expr = func.to_char(Conversation.created_at, "YYYY-MM")
+    else:
+        month_expr = func.strftime("%Y-%m", Conversation.created_at)
+
+    conversations_by_month = (
+        db.query(month_expr.label("month"), func.count(Conversation.id).label("count"))
+        .filter(Conversation.created_at.isnot(None))
+        .group_by(month_expr)
+        .order_by(month_expr)
+        .all()
+    )
+
+    # Activity by day of week (0=Sunday … 6=Saturday)
+    if DATABASE_MODE == "postgresql":
+        day_expr = func.extract("dow", Conversation.created_at)
+    else:
+        day_expr = func.strftime("%w", Conversation.created_at)
+
+    activity_by_day_raw = (
+        db.query(day_expr.label("day"), func.count(Conversation.id).label("count"))
+        .filter(Conversation.created_at.isnot(None))
+        .group_by(day_expr)
+        .all()
+    )
+
+    # Message role distribution
+    role_distribution = (
+        db.query(Message.role, func.count(Message.id))
+        .group_by(Message.role)
+        .all()
+    )
+
+    # Top tags by conversation count
+    top_tags = (
+        db.query(Tag.name, Tag.color, func.count(ConversationTag.conversation_id).label("count"))
+        .join(ConversationTag, Tag.id == ConversationTag.tag_id)
+        .group_by(Tag.id, Tag.name, Tag.color)
+        .order_by(func.count(ConversationTag.conversation_id).desc())
+        .limit(10)
+        .all()
+    )
+
+    # Projects breakdown
+    project_stats = (
+        db.query(Project.name, Project.color, func.count(Conversation.id).label("count"))
+        .join(Conversation, Conversation.project_id == Project.id)
+        .group_by(Project.id, Project.name, Project.color)
+        .order_by(func.count(Conversation.id).desc())
+        .all()
+    )
+
+    # Normalise day-of-week keys to integers 0–6
+    activity_by_day: dict[str, int] = {}
+    for day, count in activity_by_day_raw:
+        if day is not None:
+            activity_by_day[str(int(float(day)))] = count
+
+    return {
+        "total_conversations": total_conversations,
+        "total_messages": total_messages,
+        "avg_messages_per_conversation": round(float(avg_msgs), 1),
+        "sources": {source: count for source, count in source_counts},
+        "conversations_by_month": [
+            {"month": month, "count": count}
+            for month, count in conversations_by_month
+            if month is not None
+        ],
+        "role_distribution": {role: count for role, count in role_distribution},
+        "activity_by_day": activity_by_day,
+        "top_tags": [
+            {"name": name, "color": color or "#6B7280", "count": count}
+            for name, color, count in top_tags
+        ],
+        "projects": [
+            {"name": name, "color": color or "#8B5CF6", "count": count}
+            for name, color, count in project_stats
+        ],
     }
 
 
