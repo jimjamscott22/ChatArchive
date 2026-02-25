@@ -2,7 +2,7 @@
 
 ## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
 
-![ChatArchive Preview](https://github.com/jimjamscott22/ChatArchive/ChatArchivescrnshtNew.png)
+![ChatArchive Preview](https://raw.githubusercontent.com/jimjamscott22/ChatArchive/main/ChatArchivescrnshtNew.png)
 
 ## 🌟 Features
 
