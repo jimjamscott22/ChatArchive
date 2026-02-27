@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
+import threading
+import time
+import webbrowser
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
@@ -1837,5 +1844,40 @@ def sync_from_supabase(db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
+def _get_frontend_dist() -> Path | None:
+    """Locate the built React frontend, whether frozen or in development."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "frontend" / "dist"  # type: ignore[attr-defined]
+    dev_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    return dev_dist if dev_dist.exists() else None
+
+
+_frontend_dist = _get_frontend_dist()
+if _frontend_dist and _frontend_dist.exists():
+    _assets_dir = _frontend_dist / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _serve_spa(full_path: str) -> FileResponse:
+        file_path = _frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_frontend_dist / "index.html")
+
+
+def _open_browser_delayed(url: str, delay: float = 2.0) -> None:
+    time.sleep(delay)
+    webbrowser.open(url)
+
+
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    if getattr(sys, "frozen", False):
+        threading.Thread(
+            target=_open_browser_delayed,
+            args=("http://localhost:8000",),
+            daemon=True,
+        ).start()
+        uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    else:
+        uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

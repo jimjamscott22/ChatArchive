@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,7 +20,12 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 
 def _build_sqlite_url() -> str:
-    DB_PATH = BASE_DIR / "chatarchive.db"
+    if getattr(sys, "frozen", False):
+        # PyInstaller bundle — store DB next to the .exe so data persists across runs
+        data_dir = Path(sys.executable).parent
+    else:
+        data_dir = BASE_DIR
+    DB_PATH = data_dir / "chatarchive.db"
     return f"sqlite:///{DB_PATH}"
 
 
