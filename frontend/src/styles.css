@@ -2587,6 +2587,67 @@ button.danger:disabled {
   color: var(--text-secondary);
 }
 
+/* ===== PROJECT FILTER & MANAGE PROJECTS BUTTON ===== */
+.project-filter {
+  padding: 0 12px 12px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.project-filter label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.project-filter select {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.project-filter select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.project-filter select:hover {
+  background: var(--bg-tertiary);
+}
+
+.manage-projects-btn {
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.manage-projects-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
 @media (max-width: 900px) {
   .tag-manager-content {
     grid-template-columns: 1fr;
