@@ -179,6 +179,40 @@ When Supabase is configured, a database icon will appear in the ChatArchive head
 
 If Supabase credentials are not configured, ChatArchive automatically falls back to local SQLite storage. Your data remains private and local to your machine.
 
+### Keeping Your Free-Tier Supabase Project Active
+
+Free-tier Supabase projects are **paused automatically after 1 week of inactivity**. ChatArchive ships a lightweight keepalive script and a scheduled GitHub Actions workflow to prevent this.
+
+#### How it works
+
+`backend/keepalive_supabase.py` sends a single low-cost `SELECT id LIMIT 1` request to your Supabase project's REST API. The GitHub Actions workflow runs this script every 12 hours.
+
+#### Required GitHub repository secrets
+
+Add the following secrets in your GitHub repository under **Settings → Secrets and variables → Actions**:
+
+| Secret name | Value |
+|---|---|
+| `SUPABASE_URL` | Your Supabase project URL (e.g. `https://yourproject.supabase.co`) |
+| `SUPABASE_ANON_KEY` | Your project's `anon` / public API key |
+
+#### Running manually
+
+1. Go to **Actions → Supabase Keepalive** in your GitHub repository.
+2. Click **Run workflow** to trigger it immediately.
+3. Check the workflow logs to confirm `OK: Supabase keepalive succeeded`.
+
+You can also run the script locally:
+
+```bash
+cd backend
+SUPABASE_URL=https://yourproject.supabase.co \
+SUPABASE_ANON_KEY=your-anon-key \
+python keepalive_supabase.py
+```
+
+Set `SUPABASE_KEEPALIVE_TABLE` to override the default table (`conversations`) used for the ping.
+
 ## 📦 Importing Your Chats
 
 ### ChatGPT
