@@ -456,35 +456,38 @@ def bulk_delete_conversations(
 ) -> tuple[list[int], list[int]]:
     """Delete multiple conversations by ID. Returns (deleted_ids, failed_ids)."""
 
-    deleted_ids = []
-    failed_ids = []
-
-    for conv_id in conversation_ids:
-        try:
-            conversation = db.query(Conversation).filter(
-                Conversation.id == conv_id
-            ).first()
-
-            if conversation:
-                db.delete(conversation)
-                db.flush()
-                deleted_ids.append(conv_id)
-            else:
-                failed_ids.append(conv_id)
-        except Exception as e:
-            logger.error(f"Failed to delete conversation {conv_id}: {e}")
-            failed_ids.append(conv_id)
-            db.rollback()
+    if not conversation_ids:
+        return [], []
 
     try:
+        # Find which IDs actually exist
+        existing_ids = {
+            row[0]
+            for row in db.query(Conversation.id)
+            .filter(Conversation.id.in_(conversation_ids))
+            .all()
+        }
+        failed_ids = [cid for cid in conversation_ids if cid not in existing_ids]
+
+        if existing_ids:
+            # Bulk-delete related rows (DB cascades would handle this, but
+            # being explicit avoids ORM-level cascade loading every message)
+            db.query(Message).filter(
+                Message.conversation_id.in_(existing_ids)
+            ).delete(synchronize_session=False)
+            db.query(ConversationTag).filter(
+                ConversationTag.conversation_id.in_(existing_ids)
+            ).delete(synchronize_session=False)
+            db.query(Conversation).filter(
+                Conversation.id.in_(existing_ids)
+            ).delete(synchronize_session=False)
+
         db.commit()
+        return list(existing_ids), failed_ids
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to commit bulk delete: {e}")
-        failed_ids.extend(deleted_ids)
-        deleted_ids = []
-
-    return deleted_ids, failed_ids
+        logger.error(f"Failed to bulk delete conversations: {e}")
+        return [], conversation_ids
 
 
 @app.delete("/conversations/bulk")
@@ -1447,19 +1450,9 @@ def auto_tag_conversations(
 ) -> AutoTagResponse:
     """Automatically tag conversations based on content analysis."""
     engine = get_tagging_engine()
-    
-    # Get conversations to tag
-    if request.conversation_ids:
-        conversations = db.query(Conversation).filter(
-            Conversation.id.in_(request.conversation_ids)
-        ).all()
-    else:
-        conversations = db.query(Conversation).all()
-    
-    if not conversations:
-        raise HTTPException(status_code=404, detail="No conversations found")
-    
-    # Ensure all predefined tags exist in database
+
+    # Ensure all predefined tags exist in database BEFORE loading conversations,
+    # so the commit here doesn't expire the conversation objects mid-loop.
     for tag_info in engine.get_all_tags():
         existing_tag = db.query(Tag).filter(Tag.name == tag_info["name"]).first()
         if not existing_tag:
@@ -1469,8 +1462,19 @@ def auto_tag_conversations(
                 color=tag_info["color"],
             )
             db.add(new_tag)
-    
+
     db.commit()
+
+    # Get conversations to tag (loaded fresh after the commit above)
+    if request.conversation_ids:
+        conversations = db.query(Conversation).filter(
+            Conversation.id.in_(request.conversation_ids)
+        ).all()
+    else:
+        conversations = db.query(Conversation).all()
+
+    if not conversations:
+        raise HTTPException(status_code=404, detail="No conversations found")
     
     # Auto-tag each conversation
     tagged_count = 0
