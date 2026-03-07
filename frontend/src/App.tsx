@@ -2413,8 +2413,27 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       const result = await response.json();
       alert(`Successfully deleted ${result.deleted_count} conversation(s)`);
 
+      // Update local state instead of re-querying
+      setDuplicates(prev => {
+        if (!prev) return prev;
+        const updatedGroups = prev.groups
+          .map(group => ({
+            ...group,
+            conversations: group.conversations.filter(c => !selectedForDeletion.has(c.id)),
+            count: group.conversations.filter(c => !selectedForDeletion.has(c.id)).length,
+            total_messages: group.conversations
+              .filter(c => !selectedForDeletion.has(c.id))
+              .reduce((sum, c) => sum + c.message_count, 0),
+          }))
+          .filter(group => group.conversations.length > 1);
+        return {
+          ...prev,
+          groups: updatedGroups,
+          total_groups: updatedGroups.length,
+          total_duplicates: updatedGroups.reduce((sum, g) => sum + g.count, 0),
+        };
+      });
       setSelectedForDeletion(new Set());
-      await loadDuplicates();
       onSuccess();
     } catch (error) {
       console.error("Delete failed:", error);

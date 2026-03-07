@@ -225,7 +225,7 @@ def find_duplicates(
     )
 
 
-@app.get("/conversations/{conversation_id}", response_model=ConversationDetail)
+@app.get("/conversations/{conversation_id:int}", response_model=ConversationDetail)
 def get_conversation(
     conversation_id: int,
     db: Session = Depends(get_db),
@@ -248,7 +248,7 @@ def get_conversation(
     return conversation
 
 
-@app.delete("/conversations/{conversation_id}")
+@app.delete("/conversations/{conversation_id:int}")
 def delete_conversation(
     conversation_id: int,
     db: Session = Depends(get_db),
@@ -268,7 +268,7 @@ def delete_conversation(
 
 # ============ Import Helper Functions ============
 
-def get_import_settings(db: Session) -> ImportSettings | None:
+def get_import_settings_record(db: Session) -> ImportSettings | None:
     """Get the current import settings."""
     return db.query(ImportSettings).first()
 
@@ -681,7 +681,7 @@ async def import_chatgpt(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Get import settings
-    settings = get_import_settings(db)
+    settings = get_import_settings_record(db)
     auto_merge = settings.auto_merge_duplicates if settings else False
 
     records: list[Conversation] = []
@@ -829,7 +829,7 @@ async def import_claude(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Get import settings
-    settings = get_import_settings(db)
+    settings = get_import_settings_record(db)
     auto_merge = settings.auto_merge_duplicates if settings else False
 
     records: list[Conversation] = []
@@ -931,7 +931,7 @@ async def import_gemini(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Get import settings
-    settings = get_import_settings(db)
+    settings = get_import_settings_record(db)
     auto_merge = settings.auto_merge_duplicates if settings else False
 
     records: list[Conversation] = []
@@ -1033,7 +1033,7 @@ async def import_copilot(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Get import settings
-    settings = get_import_settings(db)
+    settings = get_import_settings_record(db)
     auto_merge = settings.auto_merge_duplicates if settings else False
 
     records: list[Conversation] = []
