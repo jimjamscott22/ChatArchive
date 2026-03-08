@@ -154,7 +154,7 @@ Shows:
 - Nested projects/subfolders
 - Bulk move operations
 - Project templates
-- Drag-and-drop for moving conversations
+- ✅ Drag-and-drop for moving conversations
 - Project-level settings
 - Export/import projects
 - Project statistics dashboard

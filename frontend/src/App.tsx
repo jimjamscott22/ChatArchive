@@ -149,6 +149,8 @@ export default function App() {
   const [supabaseConfigured, setSupabaseConfigured] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
   const [fullWidthConvo, setFullWidthConvo] = useState(false);
+  const [draggedConversationId, setDraggedConversationId] = useState<number | null>(null);
+  const [dragOverProject, setDragOverProject] = useState<number | 'uncategorized' | null>(null);
 
   // Load conversations on mount
   useEffect(() => {
@@ -1108,6 +1110,49 @@ Shift + ? - Show help`);
               </select>
             </div>
 
+            {allProjects.length > 0 && (
+              <div className={`project-drop-zones ${draggedConversationId ? 'drag-mode' : ''}`}>
+                <label>Projects — drag here to assign</label>
+                <div
+                  className={`project-drop-zone${dragOverProject === 'uncategorized' ? ' drag-over' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverProject('uncategorized'); }}
+                  onDragLeave={() => setDragOverProject(null)}
+                  onDrop={async () => {
+                    if (draggedConversationId !== null) {
+                      await moveConversationToProject(draggedConversationId, null);
+                    }
+                    setDragOverProject(null);
+                    setDraggedConversationId(null);
+                  }}
+                  onClick={() => handleProjectFilter(-1)}
+                  title="Uncategorized conversations"
+                >
+                  📂 Uncategorized
+                </div>
+                {allProjects.map((project) => (
+                  <div
+                    key={project.id}
+                    className={`project-drop-zone${dragOverProject === project.id ? ' drag-over' : ''}`}
+                    style={{ borderLeftColor: project.color || '#8B5CF6' }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverProject(project.id); }}
+                    onDragLeave={() => setDragOverProject(null)}
+                    onDrop={async () => {
+                      if (draggedConversationId !== null) {
+                        await moveConversationToProject(draggedConversationId, project.id);
+                      }
+                      setDragOverProject(null);
+                      setDraggedConversationId(null);
+                    }}
+                    onClick={() => handleProjectFilter(project.id)}
+                    title={project.description || project.name}
+                  >
+                    <span className="project-drop-color-dot" style={{ backgroundColor: project.color || '#8B5CF6' }} />
+                    {project.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button className="manage-tags-btn" onClick={() => setShowTagModal(true)}>
               <Tag size={16} />
               Manage Tags
@@ -1187,8 +1232,18 @@ Shift + ? - Show help`);
             conversations.map((conv) => (
               <div
                 key={conv.id}
-                className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""}`}
+                className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
                 onClick={() => loadConversation(conv.id)}
+                draggable={true}
+                onDragStart={(e) => {
+                  setDraggedConversationId(conv.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(conv.id));
+                }}
+                onDragEnd={() => {
+                  setDraggedConversationId(null);
+                  setDragOverProject(null);
+                }}
               >
                 <div className="card-header">
                   <div className="card-left">

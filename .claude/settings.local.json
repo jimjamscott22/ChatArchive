@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm list vite react-window lucide-react typescript)",
-      "Bash(pip show SQLAlchemy python-multipart anyio greenlet)"
+      "Bash(pip show SQLAlchemy python-multipart anyio greenlet)",
+      "Bash(npm run build)"
     ]
   }
 }
