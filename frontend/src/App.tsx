@@ -613,7 +613,7 @@ Shift + ? - Show help`);
 
   const handleDeleteConversation = async () => {
     if (!selectedConversation || !confirm('Delete this conversation?')) return;
-    
+
     try {
       await fetch(`${API_URL}/conversations/${selectedConversation.id}`, {
         method: 'DELETE'

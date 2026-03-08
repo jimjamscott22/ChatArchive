@@ -271,7 +271,7 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 - [ ] Semantic search with embeddings
 - [ ] Conversation summaries
 - [ ] Export functionality
-- [ ] Analytics dashboard
+- [x] Analytics dashboard
 - [ ] Browser extension for auto-archiving
 - [ ] Multi-user support
 - [ ] Cloud sync (optional)

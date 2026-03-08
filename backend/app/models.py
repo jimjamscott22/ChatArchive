@@ -27,7 +27,6 @@ class Conversation(Base):
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), index=True
     )  # Project/folder organization
-    
     # Relationships
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"

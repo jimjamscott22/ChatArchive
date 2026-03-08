@@ -107,7 +107,7 @@ def list_conversations(
             query = query.filter(Conversation.project_id.is_(None))
         else:
             query = query.filter(Conversation.project_id == project_id)
-    
+
     # Get total count
     total = query.count()
     
