@@ -551,11 +551,8 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
         .all()
     )
 
-    # Conversations grouped by month (database-agnostic)
-    if DATABASE_MODE == "postgresql":
-        month_expr = func.to_char(Conversation.created_at, "YYYY-MM")
-    else:
-        month_expr = func.strftime("%Y-%m", Conversation.created_at)
+    # Conversations grouped by month (PostgreSQL/Supabase)
+    month_expr = func.to_char(Conversation.created_at, "YYYY-MM")
 
     conversations_by_month = (
         db.query(month_expr.label("month"), func.count(Conversation.id).label("count"))
@@ -566,10 +563,7 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
     )
 
     # Activity by day of week (0=Sunday … 6=Saturday)
-    if DATABASE_MODE == "postgresql":
-        day_expr = func.extract("dow", Conversation.created_at)
-    else:
-        day_expr = func.strftime("%w", Conversation.created_at)
+    day_expr = func.extract("dow", Conversation.created_at)
 
     activity_by_day_raw = (
         db.query(day_expr.label("day"), func.count(Conversation.id).label("count"))

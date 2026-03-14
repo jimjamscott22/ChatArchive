@@ -153,7 +153,7 @@ ChatArchive supports optional Supabase integration for cloud storage and Postgre
 
 5. **Initialize Database Schema**
    
-   When you start the app with Supabase credentials configured, it will automatically use PostgreSQL instead of SQLite. The schema will be created automatically on first run.
+   ChatArchive uses Supabase PostgreSQL directly. On startup, the app validates your database connection and creates the schema automatically on first run.
 
 6. **Migrate Existing Data (Optional)**
    
@@ -175,9 +175,9 @@ ChatArchive supports optional Supabase integration for cloud storage and Postgre
 
 When Supabase is configured, a database icon will appear in the ChatArchive header. Click it to open your Supabase admin dashboard directly.
 
-### Fallback to SQLite
+### Database Requirement
 
-If Supabase credentials are not configured, ChatArchive automatically falls back to local SQLite storage. Your data remains private and local to your machine.
+Supabase configuration is required. If credentials are missing or invalid, backend startup fails with a clear configuration error instead of falling back to a local database.
 
 ### Keeping Your Free-Tier Supabase Project Active
 
@@ -240,7 +240,7 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 **Backend:**
 - Python 3.10+
 - FastAPI for REST API
-- SQLite/PostgreSQL for storage
+- Supabase PostgreSQL for storage
 - Full-text search with FTS5
 
 ## 📖 Documentation

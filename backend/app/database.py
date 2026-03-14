@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -12,21 +10,9 @@ from sqlalchemy.orm import sessionmaker
 # Load environment variables
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-
-def _build_sqlite_url() -> str:
-    if getattr(sys, "frozen", False):
-        # PyInstaller bundle — store DB next to the .exe so data persists across runs
-        data_dir = Path(sys.executable).parent
-    else:
-        data_dir = BASE_DIR
-    DB_PATH = data_dir / "chatarchive.db"
-    return f"sqlite:///{DB_PATH}"
 
 
 def _build_postgresql_url() -> str | None:
@@ -61,41 +47,37 @@ def _build_postgresql_url() -> str | None:
 
 
 def _make_engine(url: str, mode: str):
-    if mode == "postgresql":
-        return create_engine(
-            url,
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
+    if mode != "postgresql":
+        raise ValueError("Only postgresql mode is supported")
+
     return create_engine(
         url,
-        connect_args={"check_same_thread": False, "timeout": 30},
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
     )
 
 
 def _init_engine():
-    """Try PostgreSQL first; fall back to SQLite if the connection fails."""
+    """Initialize a PostgreSQL engine for Supabase and validate connectivity."""
     pg_url = _build_postgresql_url()
-    if pg_url:
-        try:
-            eng = _make_engine(pg_url, "postgresql")
-            with eng.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            logging.info("Connected to PostgreSQL database.")
-            return eng, "postgresql"
-        except Exception as exc:
-            logging.warning(
-                f"PostgreSQL connection failed ({exc}). "
-                "Falling back to SQLite. To fix PostgreSQL, set DATABASE_URL in your .env "
-                "to the Session Pooler connection string from Supabase Dashboard → "
-                "Settings → Database → Connection string."
-            )
+    if not pg_url:
+        raise RuntimeError(
+            "Supabase database is not configured. Set DATABASE_URL, or set "
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+        )
 
-    sqlite_url = _build_sqlite_url()
-    eng = _make_engine(sqlite_url, "sqlite")
-    logging.info("Using SQLite database at %s", sqlite_url)
-    return eng, "sqlite"
+    try:
+        eng = _make_engine(pg_url, "postgresql")
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logging.info("Connected to PostgreSQL database.")
+        return eng, "postgresql"
+    except Exception as exc:
+        raise RuntimeError(
+            "PostgreSQL connection failed. Set DATABASE_URL in backend/.env to the "
+            "Supabase Session/Transaction Pooler URI and verify credentials."
+        ) from exc
 
 
 engine, DATABASE_MODE = _init_engine()
