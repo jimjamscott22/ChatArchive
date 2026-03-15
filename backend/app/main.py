@@ -125,7 +125,7 @@ def list_conversations(
     pages = (total + page_size - 1) // page_size
     
     return ConversationListResponse(
-        items=conversations,
+        items=[ConversationResponse.model_validate(c) for c in conversations],
         total=total,
         page=page,
         page_size=page_size,
@@ -275,11 +275,11 @@ def get_import_settings_record(db: Session) -> ImportSettings | None:
 
 def conversation_exists(
     db: Session,
-    source: str,
+    source: str | None,
     source_id: str | None
 ) -> bool:
     """Check if a conversation with the given source and source_id already exists."""
-    if not source_id:
+    if not source or not source_id:
         return False
 
     existing = db.query(Conversation).filter(
@@ -632,7 +632,8 @@ async def import_chatgpt(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
-    if not file.filename.endswith(".json"):
+    filename = file.filename
+    if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
@@ -641,7 +642,7 @@ async def import_chatgpt(
     if is_supabase_configured():
         try:
             upload_export_file(
-                filename=file.filename,
+                filename=filename,
                 content=raw,
                 source_type="chatgpt",
             )
@@ -650,7 +651,7 @@ async def import_chatgpt(
     
     # Create import history record
     import_record = ImportHistory(
-        filename=file.filename,
+        filename=filename,
         source_location=None,  # Could be enhanced to track upload source
         source_type="chatgpt",
         file_format="json",
@@ -728,7 +729,7 @@ async def import_chatgpt(
         import_record.status = "failure"
         import_record.error_message = "Invalid data format"
         db.commit()
-        logger.error(f"Import validation error for {file.filename}: {exc}")
+        logger.error(f"Import validation error for {filename}: {exc}")
         raise HTTPException(status_code=400, detail="Invalid data format") from exc
     except IntegrityError as exc:
         # Handle database constraint violations (duplicates, foreign keys, etc.)
@@ -737,7 +738,7 @@ async def import_chatgpt(
         error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
         import_record.error_message = f"Database constraint violation: {error_msg}"
         db.commit()
-        logger.error(f"Import integrity error for {file.filename}: {exc}")
+        logger.error(f"Import integrity error for {filename}: {exc}")
         raise HTTPException(
             status_code=409,
             detail=f"Database constraint violation: {error_msg}"
@@ -749,7 +750,7 @@ async def import_chatgpt(
         error_msg = str(exc.orig) if hasattr(exc, 'orig') else str(exc)
         import_record.error_message = f"Database operation failed: {error_msg}"
         db.commit()
-        logger.error(f"Import operational error for {file.filename}: {exc}")
+        logger.error(f"Import operational error for {filename}: {exc}")
         raise HTTPException(
             status_code=503,
             detail=f"Database temporarily unavailable: {error_msg}"
@@ -765,7 +766,7 @@ async def import_chatgpt(
         import_record.error_message = f"{error_type}: {error_detail}"
         db.commit()
 
-        logger.exception(f"Unexpected error during import of {file.filename}")
+        logger.exception(f"Unexpected error during import of {filename}")
 
         # Return detailed error for debugging (sanitize in production)
         raise HTTPException(
@@ -782,7 +783,8 @@ async def import_claude(
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
     """Import conversations from Claude export."""
-    if not file.filename.endswith(".json"):
+    filename = file.filename
+    if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
@@ -791,7 +793,7 @@ async def import_claude(
     if is_supabase_configured():
         try:
             upload_export_file(
-                filename=file.filename,
+                filename=filename,
                 content=raw,
                 source_type="claude",
             )
@@ -799,7 +801,7 @@ async def import_claude(
             logger.warning(f"Failed to upload file to Supabase storage: {e}")
     
     import_record = ImportHistory(
-        filename=file.filename,
+        filename=filename,
         source_type="claude",
         file_format="json",
         status="processing",
@@ -872,7 +874,7 @@ async def import_claude(
         import_record.status = "failure"
         import_record.error_message = "Import failed"
         db.commit()
-        logger.exception(f"Error importing Claude file {file.filename}")
+        logger.exception(f"Error importing Claude file {filename}")
         raise HTTPException(status_code=500, detail="Import failed")
 
     return records
@@ -884,7 +886,8 @@ async def import_gemini(
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
     """Import conversations from Gemini/Bard export."""
-    if not file.filename.endswith(".json"):
+    filename = file.filename
+    if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
@@ -893,7 +896,7 @@ async def import_gemini(
     if is_supabase_configured():
         try:
             upload_export_file(
-                filename=file.filename,
+                filename=filename,
                 content=raw,
                 source_type="gemini",
             )
@@ -901,7 +904,7 @@ async def import_gemini(
             logger.warning(f"Failed to upload file to Supabase storage: {e}")
     
     import_record = ImportHistory(
-        filename=file.filename,
+        filename=filename,
         source_type="gemini",
         file_format="json",
         status="processing",
@@ -974,7 +977,7 @@ async def import_gemini(
         import_record.status = "failure"
         import_record.error_message = "Import failed"
         db.commit()
-        logger.exception(f"Error importing Gemini file {file.filename}")
+        logger.exception(f"Error importing Gemini file {filename}")
         raise HTTPException(status_code=500, detail="Import failed")
 
     return records
@@ -986,7 +989,8 @@ async def import_copilot(
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
     """Import conversations from GitHub Copilot export."""
-    if not file.filename.endswith(".json"):
+    filename = file.filename
+    if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read()
@@ -995,7 +999,7 @@ async def import_copilot(
     if is_supabase_configured():
         try:
             upload_export_file(
-                filename=file.filename,
+                filename=filename,
                 content=raw,
                 source_type="copilot",
             )
@@ -1003,7 +1007,7 @@ async def import_copilot(
             logger.warning(f"Failed to upload file to Supabase storage: {e}")
     
     import_record = ImportHistory(
-        filename=file.filename,
+        filename=filename,
         source_type="copilot",
         file_format="json",
         status="processing",
@@ -1076,7 +1080,7 @@ async def import_copilot(
         import_record.status = "failure"
         import_record.error_message = "Import failed"
         db.commit()
-        logger.exception(f"Error importing Copilot file {file.filename}")
+        logger.exception(f"Error importing Copilot file {filename}")
         raise HTTPException(status_code=500, detail="Import failed")
 
     return records
