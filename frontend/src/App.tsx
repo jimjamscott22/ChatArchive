@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Maximize2, Minimize2, BarChart2 } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -134,7 +134,6 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [selectedConversationIndex, setSelectedConversationIndex] = useState<number>(-1);
-  const [showStats, setShowStats] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [allTags, setAllTags] = useState<TagType[]>([]);
@@ -147,7 +146,6 @@ export default function App() {
   const [showMoveToProjectModal, setShowMoveToProjectModal] = useState(false);
   const [supabaseDashboardUrl, setSupabaseDashboardUrl] = useState<string | null>(null);
   const [supabaseConfigured, setSupabaseConfigured] = useState(false);
-  const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
   const [fullWidthConvo, setFullWidthConvo] = useState(false);
   const [draggedConversationId, setDraggedConversationId] = useState<number | null>(null);
   const [dragOverProject, setDragOverProject] = useState<number | 'uncategorized' | null>(null);
@@ -301,6 +299,7 @@ Shift + ? - Show help`);
   const loadSearchResults = async (query: string, page = 1, source?: string) => {
     try {
       setLoading(true);
+      setIsSearching(true);
       const params = new URLSearchParams({
         q: query,
         page_size: PAGE_SIZE.toString(),
@@ -318,6 +317,8 @@ Shift + ? - Show help`);
     } catch (error) {
       console.error("Search failed:", error);
       setLoading(false);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -360,6 +361,7 @@ Shift + ? - Show help`);
     setSearchQuery(query);
     setCurrentPage(1);
     if (!query.trim()) {
+      setIsSearching(false);
       loadConversations(sourceFilter, 1, selectedTag, selectedProject);
       return;
     }
@@ -407,6 +409,16 @@ Shift + ? - Show help`);
     setSelectedTag(null); // Clear tag filter when selecting project
     setCurrentPage(1);
     refreshConversationList(1, undefined, null, projectId);
+  };
+
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setSourceFilter("all");
+    setSelectedTag(null);
+    setSelectedProject(null);
+    setCurrentPage(1);
+    setIsSearching(false);
+    loadConversations("all", 1, null, null);
   };
 
   const checkSupabaseConfiguration = async () => {
@@ -924,6 +936,35 @@ Shift + ? - Show help`);
 
   const highlightQuery = searchQuery.trim();
   const markdownComponents = highlightQuery ? getHighlightMarkdownComponents(highlightQuery) : undefined;
+  const sourceBreakdown = Object.entries(
+    conversations.reduce((acc, conv) => {
+      acc[conv.source] = (acc[conv.source] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  ).sort(([, countA], [, countB]) => countB - countA);
+  const totalMessagesInView = conversations.reduce((sum, conv) => sum + conv.message_count, 0);
+  const visibleProjects = new Set(
+    conversations.map((conv) => conv.project?.id).filter((projectId): projectId is number => projectId !== undefined)
+  );
+  const uncategorizedCount = conversations.filter((conv) => !conv.project).length;
+  const recentConversations = conversations.slice(0, 4);
+  const hasActiveFilters =
+    sourceFilter !== "all" ||
+    selectedTag !== null ||
+    selectedProject !== null ||
+    Boolean(highlightQuery);
+  const selectedProjectLabel =
+    selectedProject === null
+      ? null
+      : selectedProject === -1
+        ? "Uncategorized"
+        : allProjects.find((project) => project.id === selectedProject)?.name || "Selected project";
+  const activeFilters = [
+    sourceFilter !== "all" ? getSourceInfo(sourceFilter).name : null,
+    selectedTag ? `Tag: ${selectedTag}` : null,
+    selectedProjectLabel ? `Project: ${selectedProjectLabel}` : null,
+    highlightQuery ? `Search: "${highlightQuery}"` : null,
+  ].filter((value): value is string => Boolean(value));
 
   // Standalone mode: show only the conversation (opened in new window)
   if (standaloneMode) {
@@ -1017,188 +1058,208 @@ Shift + ? - Show help`);
           </div>
         </div>
 
-        <div className="search-box">
-          <Search size={16} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-
-        <button className="import-btn" onClick={() => setShowImportModal(true)}>
-          <Upload size={16} />
-          Import
-        </button>
-
-        <button className="settings-btn" onClick={() => setShowSettingsModal(true)}>
-          <Settings size={16} />
-          Settings
-        </button>
-
-        <button className="duplicates-btn" onClick={() => setShowDuplicatesModal(true)}>
-          <Copy size={16} />
-          Find Duplicates
-        </button>
-
-        <button className="analytics-btn" onClick={() => setShowAnalyticsModal(true)}>
-          <BarChart2 size={16} />
-          Analytics
-        </button>
-
-        <button
-          className="auto-tag-btn"
-          onClick={autoTagAllConversations}
-          disabled={autoTagging}
-          title="Automatically tag all conversations based on content"
-        >
-          <Tag size={16} />
-          {autoTagging ? 'Auto-Tagging...' : 'Auto-Tag All'}
-        </button>
-
         {!sidebarCollapsed && (
-          <div className="sidebar-filters">
-            <div className="source-filter">
-              <label>Filter by source:</label>
-              <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
-                <option value="all">All Sources</option>
-                <option value="chatgpt">💬 ChatGPT</option>
-                <option value="claude">🤖 Claude</option>
-                <option value="gemini">✨ Gemini</option>
-                <option value="copilot">👨‍💻 Copilot</option>
-              </select>
+          <div className="sidebar-top">
+            <div className="search-box">
+              <Search size={16} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+              />
             </div>
 
-            <div className="tag-filter">
-              <label>Filter by tag:</label>
-              <select 
-                value={selectedTag || 'all'} 
-                onChange={(e) => handleTagFilter(e.target.value === 'all' ? null : e.target.value)}
-              >
-                <option value="all">All Tags</option>
-                {allTags.map((tag) => (
-                  <option key={tag.id} value={tag.name}>
-                    {tag.name} ({tag.conversation_count})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="project-filter">
-              <label>Filter by project:</label>
-              <select 
-                value={selectedProject !== null ? selectedProject.toString() : 'all'} 
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'all') {
-                    handleProjectFilter(null);
-                  } else if (val === '-1') {
-                    handleProjectFilter(-1);
-                  } else {
-                    handleProjectFilter(parseInt(val));
-                  }
-                }}
-              >
-                <option value="all">All Projects</option>
-                <option value="-1">📂 Uncategorized ({conversations.filter(c => !c.project).length})</option>
-                {allProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    📁 {project.name} ({project.conversation_count})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {allProjects.length > 0 && (
-              <div className={`project-drop-zones ${draggedConversationId ? 'drag-mode' : ''}`}>
-                <label>Projects — drag here to assign</label>
-                <div
-                  className={`project-drop-zone${dragOverProject === 'uncategorized' ? ' drag-over' : ''}`}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverProject('uncategorized'); }}
-                  onDragLeave={() => setDragOverProject(null)}
-                  onDrop={async () => {
-                    if (draggedConversationId !== null) {
-                      await moveConversationToProject(draggedConversationId, null);
-                    }
-                    setDragOverProject(null);
-                    setDraggedConversationId(null);
-                  }}
-                  onClick={() => handleProjectFilter(-1)}
-                  title="Uncategorized conversations"
-                >
-                  📂 Uncategorized
+            <section className="sidebar-panel sidebar-primary-panel">
+              <div className="sidebar-panel-header">
+                <div>
+                  <p className="sidebar-panel-label">Library</p>
+                  <h2 className="sidebar-panel-title">{highlightQuery ? "Search results" : "Browse archive"}</h2>
                 </div>
-                {allProjects.map((project) => (
-                  <div
-                    key={project.id}
-                    className={`project-drop-zone${dragOverProject === project.id ? ' drag-over' : ''}`}
-                    style={{ borderLeftColor: project.color || '#8B5CF6' }}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverProject(project.id); }}
-                    onDragLeave={() => setDragOverProject(null)}
-                    onDrop={async () => {
-                      if (draggedConversationId !== null) {
-                        await moveConversationToProject(draggedConversationId, project.id);
-                      }
-                      setDragOverProject(null);
-                      setDraggedConversationId(null);
-                    }}
-                    onClick={() => handleProjectFilter(project.id)}
-                    title={project.description || project.name}
+                <span className="sidebar-panel-meta">{conversations.length} shown</span>
+              </div>
+
+              <button className="import-btn" onClick={() => setShowImportModal(true)}>
+                <Upload size={16} />
+                Import Conversations
+              </button>
+
+              <div className="sidebar-summary-grid">
+                <div className="sidebar-summary-card">
+                  <span className="sidebar-summary-label">Messages</span>
+                  <strong>{totalMessagesInView}</strong>
+                </div>
+                <div className="sidebar-summary-card">
+                  <span className="sidebar-summary-label">Sources</span>
+                  <strong>{sourceBreakdown.length}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="sidebar-panel">
+              <div className="sidebar-panel-header">
+                <div>
+                  <p className="sidebar-panel-label">Filters</p>
+                  <h2 className="sidebar-panel-title">Narrow the view</h2>
+                </div>
+                {hasActiveFilters && (
+                  <button className="sidebar-inline-action" onClick={clearAllFilters}>
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="sidebar-filters">
+                <div className="source-filter">
+                  <label>Filter by source:</label>
+                  <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+                    <option value="all">All Sources</option>
+                    <option value="chatgpt">💬 ChatGPT</option>
+                    <option value="claude">🤖 Claude</option>
+                    <option value="gemini">✨ Gemini</option>
+                    <option value="copilot">👨‍💻 Copilot</option>
+                  </select>
+                </div>
+
+                <div className="tag-filter">
+                  <label>Filter by tag:</label>
+                  <select
+                    value={selectedTag || "all"}
+                    onChange={(e) => handleTagFilter(e.target.value === "all" ? null : e.target.value)}
                   >
-                    <span className="project-drop-color-dot" style={{ backgroundColor: project.color || '#8B5CF6' }} />
-                    {project.name}
-                  </div>
-                ))}
-              </div>
-            )}
+                    <option value="all">All Tags</option>
+                    {allTags.map((tag) => (
+                      <option key={tag.id} value={tag.name}>
+                        {tag.name} ({tag.conversation_count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <button className="manage-tags-btn" onClick={() => setShowTagModal(true)}>
-              <Tag size={16} />
-              Manage Tags
-            </button>
+                <div className="project-filter">
+                  <label>Filter by project:</label>
+                  <select
+                    value={selectedProject !== null ? selectedProject.toString() : "all"}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "all") {
+                        handleProjectFilter(null);
+                      } else if (val === "-1") {
+                        handleProjectFilter(-1);
+                      } else {
+                        handleProjectFilter(parseInt(val, 10));
+                      }
+                    }}
+                  >
+                    <option value="all">All Projects</option>
+                    <option value="-1">📂 Uncategorized ({uncategorizedCount})</option>
+                    {allProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        📁 {project.name} ({project.conversation_count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <button className="manage-projects-btn" onClick={() => setShowProjectModal(true)}>
-              <Settings size={16} />
-              Manage Projects
-            </button>
-
-            <div className="conversation-stats">
-              <div className="stats-header" onClick={() => setShowStats(!showStats)}>
-                <span className="stats-title">Statistics</span>
-                <span className="stats-toggle">{showStats ? '▼' : '▶'}</span>
-              </div>
-              {showStats && (
-                <div className="stats-content">
-                  <div className="stat-item">
-                    <span className="stat-label">Total Conversations</span>
-                    <span className="stat-value">{conversations.length}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">Total Messages</span>
-                    <span className="stat-value">
-                      {conversations.reduce((sum, conv) => sum + conv.message_count, 0)}
-                    </span>
-                  </div>
-                  <div className="source-breakdown">
-                    <span className="stat-label">By Source</span>
-                    {Object.entries(
-                      conversations.reduce((acc, conv) => {
-                        acc[conv.source] = (acc[conv.source] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>)
-                    ).map(([source, count]) => (
-                      <div key={source} className="source-stat">
-                        <span className="source-indicator" data-source={source}>
-                          {getSourceInfo(source).icon}
-                        </span>
-                        <span className="source-count">{count}</span>
+                {allProjects.length > 0 && (
+                  <div className={`project-drop-zones ${draggedConversationId ? "drag-mode" : ""}`}>
+                    <label>Projects - drag here to assign</label>
+                    <div
+                      className={`project-drop-zone${dragOverProject === "uncategorized" ? " drag-over" : ""}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverProject("uncategorized");
+                      }}
+                      onDragLeave={() => setDragOverProject(null)}
+                      onDrop={async () => {
+                        if (draggedConversationId !== null) {
+                          await moveConversationToProject(draggedConversationId, null);
+                        }
+                        setDragOverProject(null);
+                        setDraggedConversationId(null);
+                      }}
+                      onClick={() => handleProjectFilter(-1)}
+                      title="Uncategorized conversations"
+                    >
+                      📂 Uncategorized
+                    </div>
+                    {allProjects.map((project) => (
+                      <div
+                        key={project.id}
+                        className={`project-drop-zone${dragOverProject === project.id ? " drag-over" : ""}`}
+                        style={{ borderLeftColor: project.color || "#8B5CF6" }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverProject(project.id);
+                        }}
+                        onDragLeave={() => setDragOverProject(null)}
+                        onDrop={async () => {
+                          if (draggedConversationId !== null) {
+                            await moveConversationToProject(draggedConversationId, project.id);
+                          }
+                          setDragOverProject(null);
+                          setDraggedConversationId(null);
+                        }}
+                        onClick={() => handleProjectFilter(project.id)}
+                        title={project.description || project.name}
+                      >
+                        <span
+                          className="project-drop-color-dot"
+                          style={{ backgroundColor: project.color || "#8B5CF6" }}
+                        />
+                        {project.name}
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </section>
+
+            <section className="sidebar-panel sidebar-tools-panel">
+              <div className="sidebar-panel-header">
+                <div>
+                  <p className="sidebar-panel-label">Tools</p>
+                  <h2 className="sidebar-panel-title">Organize the archive</h2>
                 </div>
-              )}
-            </div>
+              </div>
+
+              <div className="sidebar-tool-grid">
+                <button className="sidebar-tool-btn" onClick={() => setShowAnalyticsModal(true)}>
+                  <BarChart2 size={16} />
+                  Analytics
+                </button>
+
+                <button className="sidebar-tool-btn" onClick={() => setShowDuplicatesModal(true)}>
+                  <Copy size={16} />
+                  Duplicates
+                </button>
+
+                <button
+                  className="sidebar-tool-btn sidebar-tool-btn-accent"
+                  onClick={autoTagAllConversations}
+                  disabled={autoTagging}
+                  title="Automatically tag all conversations based on content"
+                >
+                  <Tag size={16} />
+                  {autoTagging ? "Auto-tagging..." : "Auto-tag all"}
+                </button>
+
+                <button className="sidebar-tool-btn" onClick={() => setShowTagModal(true)}>
+                  <Tag size={16} />
+                  Manage tags
+                </button>
+
+                <button className="sidebar-tool-btn" onClick={() => setShowProjectModal(true)}>
+                  <Settings size={16} />
+                  Manage projects
+                </button>
+
+                <button className="sidebar-tool-btn" onClick={() => setShowSettingsModal(true)}>
+                  <Settings size={16} />
+                  Settings
+                </button>
+              </div>
+            </section>
           </div>
         )}
 
@@ -1368,81 +1429,144 @@ Shift + ? - Show help`);
       {/* Main Content */}
       <main className="main-content">
         <header className="main-header">
-          <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
-            <Menu size={20} />
-          </button>
-          {selectedConversation && (
-            <button
-              className="icon-btn"
-              onClick={() => setFullWidthConvo(!fullWidthConvo)}
-              title={fullWidthConvo ? "Show sidebar" : "Full width view"}
-            >
-              {fullWidthConvo ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-          )}
-          <h2 className="header-title">
-            {selectedConversation?.title || "Select a conversation"}
-          </h2>
-          {selectedConversation && selectedConversation.tags && selectedConversation.tags.length > 0 && (
-            <div className="conversation-tags-header">
-              {selectedConversation.tags.map((tag) => (
-                <span 
-                  key={tag.id} 
-                  className="tag tag-badge"
-                  style={{
-                    backgroundColor: tag.color || '#6B7280',
-                    color: 'white',
-                  }}
-                  title={tag.description || tag.name}
-                >
-                  {tag.name}
-                  <button
-                    className="tag-remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Remove tag "${tag.name}" from this conversation?`)) {
-                        removeTagFromConversation(selectedConversation.id, tag.id);
-                      }
-                    }}
-                    style={{ marginLeft: '4px', cursor: 'pointer', border: 'none', background: 'transparent', color: 'white' }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          {selectedConversation && (
-            <div className="header-actions">
-              <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
-                <MoreVertical size={20} />
+          <div className="main-header-top">
+            <div className="main-header-leading">
+              <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
+                <Menu size={20} />
               </button>
-              {showMenu && (
-                <div className="dropdown-menu">
-                  <button className="menu-item" onClick={() => { setShowMoveToProjectModal(true); setShowMenu(false); }}>
-                    <Settings size={16} />
-                    Move to project
-                  </button>
-                  <button className="menu-item" onClick={handleDeleteConversation}>
-                    <Trash2 size={16} />
-                    Delete conversation
-                  </button>
-                  <button className="menu-item" onClick={handleExportMarkdown}>
-                    <Download size={16} />
-                    Export as Markdown
-                  </button>
-                  <button className="menu-item" onClick={handleExportJson}>
-                    <Download size={16} />
-                    Export as JSON
-                  </button>
-                  <button className="menu-item" onClick={handleExportPdf}>
-                    <Download size={16} />
-                    Export as PDF
-                  </button>
-                  <button className="menu-item" onClick={() => setShowMenu(false)}>
-                    <Tag size={16} />
-                    Add tags
-                  </button>
+              {selectedConversation && (
+                <button
+                  className="icon-btn"
+                  onClick={() => setFullWidthConvo(!fullWidthConvo)}
+                  title={fullWidthConvo ? "Show sidebar" : "Full width view"}
+                >
+                  {fullWidthConvo ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                </button>
+              )}
+            </div>
+
+            <div className="main-header-text">
+              <p className="header-kicker">
+                {selectedConversation
+                  ? getSourceInfo(selectedConversation.source).name
+                  : highlightQuery
+                    ? "Search results"
+                    : "Archive overview"}
+              </p>
+              <h2 className="header-title">
+                {selectedConversation?.title || "Browse and organize your conversations"}
+              </h2>
+              {!selectedConversation && (
+                <p className="header-subtitle">
+                  Use the sidebar to filter the archive, then pick a conversation to preview here or open it in a
+                  dedicated window.
+                </p>
+              )}
+            </div>
+
+            {selectedConversation && (
+              <div className="header-actions">
+                <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
+                  <MoreVertical size={20} />
+                </button>
+                {showMenu && (
+                  <div className="dropdown-menu">
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setShowMoveToProjectModal(true);
+                        setShowMenu(false);
+                      }}
+                    >
+                      <Settings size={16} />
+                      Move to project
+                    </button>
+                    <button className="menu-item" onClick={handleDeleteConversation}>
+                      <Trash2 size={16} />
+                      Delete conversation
+                    </button>
+                    <button className="menu-item" onClick={handleExportMarkdown}>
+                      <Download size={16} />
+                      Export as Markdown
+                    </button>
+                    <button className="menu-item" onClick={handleExportJson}>
+                      <Download size={16} />
+                      Export as JSON
+                    </button>
+                    <button className="menu-item" onClick={handleExportPdf}>
+                      <Download size={16} />
+                      Export as PDF
+                    </button>
+                    <button className="menu-item" onClick={() => setShowMenu(false)}>
+                      <Tag size={16} />
+                      Add tags
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {selectedConversation && (
+            <div className="main-header-meta">
+              <span className="header-meta-pill source-pill" data-source={selectedConversation.source}>
+                {getSourceInfo(selectedConversation.source).icon} {getSourceInfo(selectedConversation.source).name}
+              </span>
+
+              {selectedConversation.project && (
+                <button
+                  className="header-meta-pill project-pill"
+                  style={{ backgroundColor: selectedConversation.project.color || "#8B5CF6" }}
+                  onClick={() => handleProjectFilter(selectedConversation.project!.id)}
+                  title={selectedConversation.project.description || selectedConversation.project.name}
+                >
+                  📁 {selectedConversation.project.name}
+                </button>
+              )}
+
+              <span className="header-meta-pill">{selectedConversation.message_count} messages</span>
+
+              {selectedConversation.word_count ? (
+                <span className="header-meta-pill">{estimateReadingTime(selectedConversation.word_count)}</span>
+              ) : null}
+
+              <span className="header-meta-pill">
+                Updated {getRelativeTime(selectedConversation.updated_at || selectedConversation.created_at)}
+              </span>
+
+              {selectedConversation.tags && selectedConversation.tags.length > 0 && (
+                <div className="conversation-tags-header">
+                  {selectedConversation.tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="tag tag-badge"
+                      style={{
+                        backgroundColor: tag.color || "#6B7280",
+                        color: "white",
+                      }}
+                      title={tag.description || tag.name}
+                    >
+                      {tag.name}
+                      <button
+                        className="tag-remove"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Remove tag "${tag.name}" from this conversation?`)) {
+                            removeTagFromConversation(selectedConversation.id, tag.id);
+                          }
+                        }}
+                        style={{
+                          marginLeft: "4px",
+                          cursor: "pointer",
+                          border: "none",
+                          background: "transparent",
+                          color: "white",
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -1451,145 +1575,191 @@ Shift + ? - Show help`);
 
         <div className="content-area content-area-scrollable">
           {!selectedConversation ? (
-            <div className="center-conversations-wrapper">
-              <div
-                className="center-conversations-header collapsible-header"
-                onClick={() => setConversationListCollapsed(!conversationListCollapsed)}
-                title={conversationListCollapsed ? "Expand conversation list" : "Collapse conversation list"}
-              >
-                <div className="center-header-left">
-                  <h2>Your conversations</h2>
-                  {!conversationListCollapsed && (
-                    <p className="center-subtitle">
-                      Click any conversation to open it in a new window, or select from the sidebar to preview here
-                    </p>
+            <div className="overview-layout">
+              <section className="overview-hero">
+                <div className="overview-hero-copy">
+                  <span className="overview-kicker">ChatArchive</span>
+                  <h2 className="overview-title">
+                    {conversations.length === 0
+                      ? hasActiveFilters
+                        ? "No conversations match this view"
+                        : "Bring your AI conversations into one calm workspace"
+                      : "Your archive is ready to browse"}
+                  </h2>
+                  <p className="overview-description">
+                    {conversations.length === 0
+                      ? hasActiveFilters
+                        ? "Try clearing a filter or broadening your search to bring conversations back into view."
+                        : "Import a chat export to start searching, tagging, and organizing everything in one place."
+                      : "Use the sidebar to filter the archive, then preview any conversation here or pop it into a dedicated reading window."}
+                  </p>
+                </div>
+
+                <div className="overview-hero-actions">
+                  <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
+                    <Upload size={16} />
+                    Import Conversations
+                  </button>
+                  {hasActiveFilters && (
+                    <button className="overview-secondary-btn" onClick={clearAllFilters}>
+                      Clear filters
+                    </button>
+                  )}
+                  {!hasActiveFilters && conversations.length > 0 && recentConversations[0] && (
+                    <button className="overview-secondary-btn" onClick={() => loadConversation(recentConversations[0].id)}>
+                      Open latest conversation
+                    </button>
                   )}
                 </div>
-                <button className="icon-btn collapse-list-btn" tabIndex={-1}>
-                  {conversationListCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
-                </button>
-              </div>
-              {!conversationListCollapsed && (
-                <>
-                  {(loading || isSearching) ? (
-                    <div className="skeleton-container center-skeleton">
-                      {Array.from({ length: 8 }).map((_, i) => (
-                        <div key={i} className="skeleton-card">
-                          <div className="skeleton-header">
-                            <div className="skeleton-avatar"></div>
-                            <div className="skeleton-info">
-                              <div className="skeleton-title"></div>
-                              <div className="skeleton-meta"></div>
-                            </div>
-                          </div>
-                          <div className="skeleton-preview"></div>
+              </section>
+
+              {loading || isSearching ? (
+                <div className="skeleton-container center-skeleton">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="skeleton-card">
+                      <div className="skeleton-header">
+                        <div className="skeleton-avatar"></div>
+                        <div className="skeleton-info">
+                          <div className="skeleton-title"></div>
+                          <div className="skeleton-meta"></div>
                         </div>
-                      ))}
+                      </div>
+                      <div className="skeleton-preview"></div>
                     </div>
-                  ) : conversations.length === 0 ? (
-                    <div className="welcome-state">
-                      <Sparkles size={48} className="welcome-icon" />
-                      <h2>Welcome to ChatArchive</h2>
-                      <p>Import your chat history to get started</p>
-                      <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
-                        <Upload size={16} />
-                        Import Conversations
-                      </button>
+                  ))}
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="overview-panels">
+                  <section className="overview-panel overview-empty-panel">
+                    <div className="overview-panel-header">
+                      <div>
+                        <h3>{hasActiveFilters ? "Current filters" : "Getting started"}</h3>
+                        <p>
+                          {hasActiveFilters
+                            ? "These filters are active right now."
+                            : "A few helpful next steps once you import your first archive."}
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="center-conversations-list">
-                      {(conversations as Conversation[]).map((conv: Conversation) => (
-                        <div
-                          key={conv.id}
-                          className="conversation-card center-card"
-                          onClick={() => loadConversation(conv.id)}
-                        >
-                          <div className="card-header">
-                            <div className="card-left">
+
+                    {hasActiveFilters ? (
+                      <div className="overview-chip-list">
+                        {activeFilters.map((filterLabel) => (
+                          <span key={filterLabel} className="overview-chip">
+                            {filterLabel}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="overview-checklist">
+                        <div className="overview-check-item">Import a conversation export from ChatGPT, Claude, Gemini, or Copilot.</div>
+                        <div className="overview-check-item">Use tags and projects to group related threads.</div>
+                        <div className="overview-check-item">Open focused conversations in a separate window when you want a clean reading view.</div>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              ) : (
+                <>
+                  <div className="overview-stats-grid">
+                    <article className="overview-stat-card">
+                      <span className="overview-stat-label">Conversations in view</span>
+                      <strong>{conversations.length}</strong>
+                    </article>
+                    <article className="overview-stat-card">
+                      <span className="overview-stat-label">Messages in view</span>
+                      <strong>{totalMessagesInView}</strong>
+                    </article>
+                    <article className="overview-stat-card">
+                      <span className="overview-stat-label">Projects represented</span>
+                      <strong>{visibleProjects.size + (uncategorizedCount > 0 ? 1 : 0)}</strong>
+                    </article>
+                    <article className="overview-stat-card">
+                      <span className="overview-stat-label">Sources represented</span>
+                      <strong>{sourceBreakdown.length}</strong>
+                    </article>
+                  </div>
+
+                  <div className="overview-panels">
+                    <section className="overview-panel">
+                      <div className="overview-panel-header">
+                        <div>
+                          <h3>Recent conversations</h3>
+                          <p>The latest items in your current view.</p>
+                        </div>
+                      </div>
+
+                      <div className="overview-recent-list">
+                        {recentConversations.map((conv) => (
+                          <article key={conv.id} className="overview-conversation-card">
+                            <button className="overview-conversation-main" onClick={() => loadConversation(conv.id)}>
                               <div className="source-avatar" data-source={conv.source}>
                                 {getSourceInfo(conv.source).icon}
                               </div>
-                              <div className="conv-info">
-                                <h3 className="conv-title">
-                                  {renderHighlightedText(conv.title || "Untitled", highlightQuery)}
-                                </h3>
-                                <div className="conv-meta">
-                                  <span className="conv-time">{getRelativeTime(conv.updated_at || conv.created_at)}</span>
-                                  <span className="conv-stats">
-                                    {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
-                                  </span>
-                                  {conv.word_count && (
-                                    <span className="conv-stats">{estimateReadingTime(conv.word_count)}</span>
-                                  )}
+                              <div className="overview-conversation-copy">
+                                <h4>{renderHighlightedText(conv.title || "Untitled", highlightQuery)}</h4>
+                                <p>{renderHighlightedText(getMessagePreview(conv), highlightQuery)}</p>
+                                <div className="overview-conversation-meta">
+                                  <span>{getRelativeTime(conv.updated_at || conv.created_at)}</span>
+                                  <span>{conv.message_count} messages</span>
+                                  {conv.word_count ? <span>{estimateReadingTime(conv.word_count)}</span> : null}
                                 </div>
                               </div>
-                            </div>
-                            <div className="card-right">
-                              <button
-                                className="icon-btn open-new-window-btn primary-action"
-                                title="Open in new window"
-                                onClick={(e) => openConversationInNewWindow(conv.id, e)}
-                              >
-                                <ExternalLink size={16} />
-                                Open in new window
-                              </button>
-                              <span className="tag source" data-source={conv.source}>
-                                {getSourceInfo(conv.source).name}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="card-preview">
-                            <p className="conv-preview">
-                              {renderHighlightedText(getMessagePreview(conv), highlightQuery)}
-                            </p>
-                          </div>
-                          {conv.tags && conv.tags.length > 0 && (
-                            <div className="card-tags">
-                              {conv.tags.map((tag: TagType) => (
-                                <span
-                                  key={tag.id}
-                                  className="tag tag-badge"
-                                  style={{
-                                    backgroundColor: tag.color || '#6B7280',
-                                    color: 'white',
-                                    cursor: 'pointer'
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTagFilter(tag.name);
-                                  }}
-                                  title={tag.description || tag.name}
-                                >
-                                  {tag.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                            </button>
+
+                            <button
+                              className="icon-btn overview-conversation-launch"
+                              title="Open in new window"
+                              onClick={(e) => openConversationInNewWindow(conv.id, e)}
+                            >
+                              <ExternalLink size={16} />
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="overview-panel">
+                      <div className="overview-panel-header">
+                        <div>
+                          <h3>Current focus</h3>
+                          <p>What this view is showing right now.</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  {!loading && !isSearching && conversations.length > 0 && totalPages > 1 && (
-                    <div className="center-pagination">
-                      <button
-                        className="pagination-btn"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage <= 1}
-                      >
-                        ← Prev
-                      </button>
-                      <span className="pagination-info">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        className="pagination-btn"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage >= totalPages}
-                      >
-                        Next →
-                      </button>
-                    </div>
-                  )}
+                      </div>
+
+                      <div className="overview-focus-stack">
+                        <div>
+                          <span className="overview-section-label">Active filters</span>
+                          <div className="overview-chip-list">
+                            {activeFilters.length > 0 ? (
+                              activeFilters.map((filterLabel) => (
+                                <span key={filterLabel} className="overview-chip">
+                                  {filterLabel}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="overview-empty-copy">No filters applied. You're looking at the broad archive view.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="overview-section-label">Source mix</span>
+                          <div className="overview-source-list">
+                            {sourceBreakdown.map(([source, count]) => (
+                              <div key={source} className="overview-source-row">
+                                <span className="overview-source-name">
+                                  <span className="source-indicator">{getSourceInfo(source).icon}</span>
+                                  {getSourceInfo(source).name}
+                                </span>
+                                <strong>{count}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
                 </>
               )}
             </div>
