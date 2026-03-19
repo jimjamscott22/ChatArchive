@@ -1922,11 +1922,26 @@ def _open_browser_delayed(url: str, delay: float = 2.0) -> None:
 
 if __name__ == "__main__":
     if getattr(sys, "frozen", False):
+        # When running as a PyInstaller bundle there is no attached console,
+        # so sys.stdout/stderr are None.  Redirect them to a log file so that
+        # uvicorn's logging formatters (which call stream.isatty()) don't crash.
+        log_path = Path(sys.executable).parent / "chatarchive.log"
+        _log_file = open(log_path, "w", buffering=1, encoding="utf-8")
+        sys.stdout = _log_file
+        sys.stderr = _log_file
+        logging.basicConfig(stream=_log_file, level=logging.INFO)
+
         threading.Thread(
             target=_open_browser_delayed,
             args=("http://localhost:8000",),
             daemon=True,
         ).start()
-        uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            reload=False,
+            log_config=None,
+        )
     else:
         uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
