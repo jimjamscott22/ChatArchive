@@ -3,6 +3,7 @@ import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Downlo
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
+import ModalShell from "./components/ModalShell";
 
 const API_URL = "http://localhost:8000";
 const PAGE_SIZE = 100;
@@ -144,6 +145,7 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showMoveToProjectModal, setShowMoveToProjectModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [supabaseDashboardUrl, setSupabaseDashboardUrl] = useState<string | null>(null);
   const [supabaseConfigured, setSupabaseConfigured] = useState(false);
   const [fullWidthConvo, setFullWidthConvo] = useState(false);
@@ -176,7 +178,12 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.contentEditable === 'true'
+      ) {
         return;
       }
 
@@ -205,7 +212,12 @@ export default function App() {
       if (e.key === 'Escape') {
         setShowImportModal(false);
         setShowSettingsModal(false);
+        setShowDuplicatesModal(false);
         setShowAnalyticsModal(false);
+        setShowTagModal(false);
+        setShowProjectModal(false);
+        setShowMoveToProjectModal(false);
+        setShowShortcutsModal(false);
         setShowMenu(false);
       }
 
@@ -239,22 +251,13 @@ export default function App() {
       // ?: Show keyboard shortcuts help
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
-        alert(`Keyboard Shortcuts:
-
-⌘/Ctrl + K - Focus search
-⌘/Ctrl + I - Open import
-⌘/Ctrl + , - Settings
-⌘/Ctrl + E - Export menu
-⌘/Ctrl + B - Toggle sidebar
-↑/↓ - Navigate conversations
-ESC - Close modals
-Shift + ? - Show help`);
+        setShowShortcutsModal(true);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed, theme]);
+  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed]);
 
   // Update selected index when conversations change
   useEffect(() => {
@@ -296,7 +299,13 @@ Shift + ? - Show help`);
     }
   };
 
-  const loadSearchResults = async (query: string, page = 1, source?: string) => {
+  const loadSearchResults = async (
+    query: string,
+    page = 1,
+    source?: string,
+    tag?: string | null,
+    projectId?: number | null
+  ) => {
     try {
       setLoading(true);
       setIsSearching(true);
@@ -307,6 +316,12 @@ Shift + ? - Show help`);
       });
       if (source && source !== "all") {
         params.append("source", source);
+      }
+      if (tag) {
+        params.append("tag", tag);
+      }
+      if (projectId !== null && projectId !== undefined) {
+        params.append("project_id", projectId.toString());
       }
       const response = await fetch(`${API_URL}/conversations/search?${params}`);
       const data = await response.json();
@@ -327,7 +342,7 @@ Shift + ? - Show help`);
     const nextTag = tag ?? selectedTag;
     const nextProject = projectId !== undefined ? projectId : selectedProject;
     if (searchQuery.trim()) {
-      loadSearchResults(searchQuery.trim(), page, nextSource);
+      loadSearchResults(searchQuery.trim(), page, nextSource, nextTag, nextProject);
       return;
     }
     loadConversations(nextSource, page, nextTag, nextProject);
@@ -366,7 +381,7 @@ Shift + ? - Show help`);
       return;
     }
 
-    await loadSearchResults(query.trim(), 1, sourceFilter);
+    await loadSearchResults(query.trim(), 1, sourceFilter, selectedTag, selectedProject);
   };
 
   // Tag-related functions
@@ -401,14 +416,13 @@ Shift + ? - Show help`);
   const handleTagFilter = (tagName: string | null) => {
     setSelectedTag(tagName);
     setCurrentPage(1);
-    loadConversations(sourceFilter, 1, tagName);
+    refreshConversationList(1, undefined, tagName, selectedProject);
   };
 
   const handleProjectFilter = (projectId: number | null) => {
     setSelectedProject(projectId);
-    setSelectedTag(null); // Clear tag filter when selecting project
     setCurrentPage(1);
-    refreshConversationList(1, undefined, null, projectId);
+    refreshConversationList(1, undefined, selectedTag, projectId);
   };
 
   const clearAllFilters = () => {
@@ -617,10 +631,10 @@ Shift + ? - Show help`);
     setSourceFilter(source);
     setCurrentPage(1);
     if (searchQuery.trim()) {
-      loadSearchResults(searchQuery.trim(), 1, source);
+      loadSearchResults(searchQuery.trim(), 1, source, selectedTag, selectedProject);
       return;
     }
-    loadConversations(source, 1, null, null);
+    loadConversations(source, 1, selectedTag, selectedProject);
   };
 
   const handleDeleteConversation = async () => {
@@ -948,6 +962,13 @@ Shift + ? - Show help`);
   );
   const uncategorizedCount = conversations.filter((conv) => !conv.project).length;
   const recentConversations = conversations.slice(0, 4);
+  const supportedSources = ["chatgpt", "claude", "gemini", "copilot"];
+  const topTags = [...allTags]
+    .sort((tagA, tagB) => tagB.conversation_count - tagA.conversation_count)
+    .slice(0, 5);
+  const topProjects = [...allProjects]
+    .sort((projectA, projectB) => projectB.conversation_count - projectA.conversation_count)
+    .slice(0, 4);
   const hasActiveFilters =
     sourceFilter !== "all" ||
     selectedTag !== null ||
@@ -1048,7 +1069,12 @@ Shift + ? - Show help`);
               </a>
             )}
             {!sidebarCollapsed && (
-              <button className="icon-btn keyboard-shortcut-hint" title="Press Shift+? for keyboard shortcuts">
+              <button
+                className="icon-btn keyboard-shortcut-hint"
+                title="Press Shift+? for keyboard shortcuts"
+                aria-label="Open keyboard shortcuts"
+                onClick={() => setShowShortcutsModal(true)}
+              >
                 <span className="keyboard-hint">⌨️</span>
               </button>
             )}
@@ -1061,8 +1087,10 @@ Shift + ? - Show help`);
         {!sidebarCollapsed && (
           <div className="sidebar-top">
             <div className="search-box">
+              <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
               <Search size={16} className="search-icon" />
               <input
+                id="conversation-search"
                 type="text"
                 placeholder="Search conversations..."
                 value={searchQuery}
@@ -1111,8 +1139,8 @@ Shift + ? - Show help`);
 
               <div className="sidebar-filters">
                 <div className="source-filter">
-                  <label>Filter by source:</label>
-                  <select value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+                  <label htmlFor="source-filter">Filter by source:</label>
+                  <select id="source-filter" value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
                     <option value="all">All Sources</option>
                     <option value="chatgpt">💬 ChatGPT</option>
                     <option value="claude">🤖 Claude</option>
@@ -1122,8 +1150,9 @@ Shift + ? - Show help`);
                 </div>
 
                 <div className="tag-filter">
-                  <label>Filter by tag:</label>
+                  <label htmlFor="tag-filter">Filter by tag:</label>
                   <select
+                    id="tag-filter"
                     value={selectedTag || "all"}
                     onChange={(e) => handleTagFilter(e.target.value === "all" ? null : e.target.value)}
                   >
@@ -1137,8 +1166,9 @@ Shift + ? - Show help`);
                 </div>
 
                 <div className="project-filter">
-                  <label>Filter by project:</label>
+                  <label htmlFor="project-filter">Filter by project:</label>
                   <select
+                    id="project-filter"
                     value={selectedProject !== null ? selectedProject.toString() : "all"}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1166,6 +1196,8 @@ Shift + ? - Show help`);
                     <label>Projects - drag here to assign</label>
                     <div
                       className={`project-drop-zone${dragOverProject === "uncategorized" ? " drag-over" : ""}`}
+                      role="button"
+                      tabIndex={0}
                       onDragOver={(e) => {
                         e.preventDefault();
                         setDragOverProject("uncategorized");
@@ -1179,6 +1211,12 @@ Shift + ? - Show help`);
                         setDraggedConversationId(null);
                       }}
                       onClick={() => handleProjectFilter(-1)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleProjectFilter(-1);
+                        }
+                      }}
                       title="Uncategorized conversations"
                     >
                       📂 Uncategorized
@@ -1188,6 +1226,8 @@ Shift + ? - Show help`);
                         key={project.id}
                         className={`project-drop-zone${dragOverProject === project.id ? " drag-over" : ""}`}
                         style={{ borderLeftColor: project.color || "#8B5CF6" }}
+                        role="button"
+                        tabIndex={0}
                         onDragOver={(e) => {
                           e.preventDefault();
                           setDragOverProject(project.id);
@@ -1201,6 +1241,12 @@ Shift + ? - Show help`);
                           setDraggedConversationId(null);
                         }}
                         onClick={() => handleProjectFilter(project.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleProjectFilter(project.id);
+                          }
+                        }}
                         title={project.description || project.name}
                       >
                         <span
@@ -1294,7 +1340,17 @@ Shift + ? - Show help`);
               <div
                 key={conv.id}
                 className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedConversation?.id === conv.id}
+                aria-label={conv.title || "Untitled conversation"}
                 onClick={() => loadConversation(conv.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    loadConversation(conv.id);
+                  }
+                }}
                 draggable={true}
                 onDragStart={(e) => {
                   setDraggedConversationId(conv.id);
@@ -1347,13 +1403,13 @@ Shift + ? - Show help`);
                 {conv.tags && conv.tags.length > 0 && (
                   <div className="card-tags">
                     {conv.tags.map((tag) => (
-                      <span 
+                      <button 
                         key={tag.id} 
-                        className="tag tag-badge" 
+                        type="button"
+                        className="tag tag-badge tag-filter-chip" 
                         style={{
                           backgroundColor: tag.color || '#6B7280',
                           color: 'white',
-                          cursor: 'pointer'
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1362,14 +1418,15 @@ Shift + ? - Show help`);
                         title={tag.description || tag.name}
                       >
                         {tag.name}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 )}
                 {conv.project && (
                   <div className="card-project">
-                    <span 
-                      className="project-badge" 
+                    <button 
+                      type="button"
+                      className="project-badge project-badge-btn" 
                       style={{
                         backgroundColor: conv.project.color || '#8B5CF6',
                         color: 'white',
@@ -1386,7 +1443,7 @@ Shift + ? - Show help`);
                       title={conv.project.description || conv.project.name}
                     >
                       📁 {conv.project.name}
-                    </span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1590,9 +1647,17 @@ Shift + ? - Show help`);
                     {conversations.length === 0
                       ? hasActiveFilters
                         ? "Try clearing a filter or broadening your search to bring conversations back into view."
-                        : "Import a chat export to start searching, tagging, and organizing everything in one place."
+                        : "Import a chat export to start searching, tagging, and organizing everything in one local-first workspace."
                       : "Use the sidebar to filter the archive, then preview any conversation here or pop it into a dedicated reading window."}
                   </p>
+                  <div className="overview-chip-list">
+                    {supportedSources.map((source) => (
+                      <span key={source} className="overview-chip">
+                        {getSourceInfo(source).icon} {getSourceInfo(source).name}
+                      </span>
+                    ))}
+                    <span className="overview-chip">Local-first archive</span>
+                  </div>
                 </div>
 
                 <div className="overview-hero-actions">
@@ -1608,6 +1673,11 @@ Shift + ? - Show help`);
                   {!hasActiveFilters && conversations.length > 0 && recentConversations[0] && (
                     <button className="overview-secondary-btn" onClick={() => loadConversation(recentConversations[0].id)}>
                       Open latest conversation
+                    </button>
+                  )}
+                  {!hasActiveFilters && conversations.length > 0 && (
+                    <button className="overview-secondary-btn" onClick={() => setShowAnalyticsModal(true)}>
+                      Review analytics
                     </button>
                   )}
                 </div>
@@ -1651,10 +1721,30 @@ Shift + ? - Show help`);
                         ))}
                       </div>
                     ) : (
-                      <div className="overview-checklist">
-                        <div className="overview-check-item">Import a conversation export from ChatGPT, Claude, Gemini, or Copilot.</div>
-                        <div className="overview-check-item">Use tags and projects to group related threads.</div>
-                        <div className="overview-check-item">Open focused conversations in a separate window when you want a clean reading view.</div>
+                      <div className="overview-onboarding-grid">
+                        <div className="overview-onboarding-card">
+                          <span className="overview-section-label">Supported imports</span>
+                          <div className="overview-source-list">
+                            {supportedSources.map((source) => (
+                              <div key={source} className="overview-source-row">
+                                <span className="overview-source-name">
+                                  <span className="source-indicator">{getSourceInfo(source).icon}</span>
+                                  {getSourceInfo(source).name}
+                                </span>
+                                <strong>Ready</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="overview-onboarding-card">
+                          <span className="overview-section-label">After import</span>
+                          <div className="overview-checklist">
+                            <div className="overview-check-item">Search across titles and message content from one place.</div>
+                            <div className="overview-check-item">Use tags and projects to group related work.</div>
+                            <div className="overview-check-item">Open long threads in a dedicated reader when you want a calmer view.</div>
+                          </div>
+                          <p className="overview-empty-copy">Your archive stays local unless you explicitly connect external storage.</p>
+                        </div>
                       </div>
                     )}
                   </section>
@@ -1757,6 +1847,79 @@ Shift + ? - Show help`);
                             ))}
                           </div>
                         </div>
+
+                        <div>
+                          <span className="overview-section-label">Archive health</span>
+                          <div className="overview-mini-stat-grid">
+                            <div className="overview-mini-stat">
+                              <strong>{allTags.length}</strong>
+                              <span>saved tags</span>
+                            </div>
+                            <div className="overview-mini-stat">
+                              <strong>{allProjects.length}</strong>
+                              <span>projects</span>
+                            </div>
+                            <div className="overview-mini-stat">
+                              <strong>{uncategorizedCount}</strong>
+                              <span>uncategorized in view</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="overview-section-label">Top tags</span>
+                          <div className="overview-chip-list">
+                            {topTags.length > 0 ? (
+                              topTags.map((tag) => (
+                                <button
+                                  key={tag.id}
+                                  type="button"
+                                  className="overview-chip overview-chip-button"
+                                  onClick={() => handleTagFilter(tag.name)}
+                                >
+                                  {tag.name} ({tag.conversation_count})
+                                </button>
+                              ))
+                            ) : (
+                              <span className="overview-empty-copy">Tags will appear here after you import or classify conversations.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="overview-section-label">Top projects</span>
+                          <div className="overview-chip-list">
+                            {topProjects.length > 0 ? (
+                              topProjects.map((project) => (
+                                <button
+                                  key={project.id}
+                                  type="button"
+                                  className="overview-chip overview-chip-button"
+                                  onClick={() => handleProjectFilter(project.id)}
+                                >
+                                  {project.name} ({project.conversation_count})
+                                </button>
+                              ))
+                            ) : (
+                              <span className="overview-empty-copy">Create projects once you want to group related threads.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="overview-section-label">Quick actions</span>
+                          <div className="overview-action-grid">
+                            <button type="button" className="overview-secondary-btn" onClick={() => setShowAnalyticsModal(true)}>
+                              Open analytics
+                            </button>
+                            <button type="button" className="overview-secondary-btn" onClick={() => setShowTagModal(true)}>
+                              Manage tags
+                            </button>
+                            <button type="button" className="overview-secondary-btn" onClick={() => setShowProjectModal(true)}>
+                              Manage projects
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </section>
                   </div>
@@ -1845,6 +2008,10 @@ Shift + ? - Show help`);
 
       {showAnalyticsModal && (
         <AnalyticsDashboard onClose={() => setShowAnalyticsModal(false)} />
+      )}
+
+      {showShortcutsModal && (
+        <KeyboardShortcutsModal onClose={() => setShowShortcutsModal(false)} />
       )}
     </div>
   );
@@ -1954,99 +2121,90 @@ function TagManagerModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal tag-manager-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Manage Tags</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+    <ModalShell title="Manage Tags" onClose={onClose} className="tag-manager-modal" bodyClassName="tag-manager-content">
+      <form className="tag-form" onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Tag name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. research"
+          />
         </div>
-
-        <div className="tag-manager-content">
-          <form className="tag-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>Tag name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. research"
-              />
-            </div>
-            <div className="form-group">
-              <label>Description</label>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description"
-              />
-            </div>
-            <div className="form-group">
-              <label>Color</label>
-              <div className="tag-color-row">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  aria-label="Tag color"
-                />
-                <span className="tag-preview" style={{ backgroundColor: color }}>
-                  {name.trim() || "Preview"}
-                </span>
-              </div>
-            </div>
-
-            <div className="tag-form-actions">
-              {editingTag && (
-                <button type="button" onClick={resetForm}>
-                  Cancel Edit
-                </button>
-              )}
-              <button className="primary" type="submit" disabled={saving}>
-                {saving ? "Saving..." : editingTag ? "Save Tag" : "Create Tag"}
-              </button>
-            </div>
-
-            {status && <div className="status-success">{status}</div>}
-            {error && <div className="status-error">{error}</div>}
-          </form>
-
-          <div className="tag-list">
-            <div className="tag-list-header">Existing tags</div>
-            {tags.length === 0 ? (
-              <div className="empty">No tags created yet.</div>
-            ) : (
-              <div className="tag-list-items">
-                {tags.map((tag) => (
-                  <div key={tag.id} className="tag-row">
-                    <div className="tag-row-main">
-                      <span className="tag-badge" style={{ backgroundColor: tag.color || "#6B7280", color: "white" }}>
-                        {tag.name}
-                      </span>
-                      <div className="tag-row-info">
-                        <div className="tag-row-name">{tag.name}</div>
-                        <div className="tag-row-meta">
-                          {tag.description || "No description"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="tag-row-actions">
-                      <span className="tag-count">{tag.conversation_count} conv</span>
-                      <button type="button" onClick={() => handleEdit(tag)}>
-                        Edit
-                      </button>
-                      <button type="button" className="danger" onClick={() => handleDelete(tag)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <div className="form-group">
+          <label>Description</label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description"
+          />
+        </div>
+        <div className="form-group">
+          <label>Color</label>
+          <div className="tag-color-row">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              aria-label="Tag color"
+            />
+            <span className="tag-preview" style={{ backgroundColor: color }}>
+              {name.trim() || "Preview"}
+            </span>
           </div>
         </div>
+
+        <div className="tag-form-actions">
+          {editingTag && (
+            <button type="button" onClick={resetForm}>
+              Cancel Edit
+            </button>
+          )}
+          <button className="primary" type="submit" disabled={saving}>
+            {saving ? "Saving..." : editingTag ? "Save Tag" : "Create Tag"}
+          </button>
+        </div>
+
+        {status && <div className="status-success">{status}</div>}
+        {error && <div className="status-error">{error}</div>}
+      </form>
+
+      <div className="tag-list">
+        <div className="tag-list-header">Existing tags</div>
+        {tags.length === 0 ? (
+          <div className="empty">No tags created yet.</div>
+        ) : (
+          <div className="tag-list-items">
+            {tags.map((tag) => (
+              <div key={tag.id} className="tag-row">
+                <div className="tag-row-main">
+                  <span className="tag-badge" style={{ backgroundColor: tag.color || "#6B7280", color: "white" }}>
+                    {tag.name}
+                  </span>
+                  <div className="tag-row-info">
+                    <div className="tag-row-name">{tag.name}</div>
+                    <div className="tag-row-meta">
+                      {tag.description || "No description"}
+                    </div>
+                  </div>
+                </div>
+                <div className="tag-row-actions">
+                  <span className="tag-count">{tag.conversation_count} conv</span>
+                  <button type="button" onClick={() => handleEdit(tag)}>
+                    Edit
+                  </button>
+                  <button type="button" className="danger" onClick={() => handleDelete(tag)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -2165,70 +2323,67 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal import-modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Import Conversations</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="source-select">Select Source</label>
-            <select 
-              id="source-select"
-              value={source} 
-              onChange={(e) => setSource(e.target.value as typeof source)}
-              className="source-select"
-            >
-              {Object.entries(sourceInfo).map(([key, info]) => (
-                <option key={key} value={key}>
-                  {info.icon} {info.name}
-                </option>
-              ))}
-            </select>
-            <p className="source-description">{sourceInfo[source].description}</p>
-          </div>
+    <ModalShell title="Import Conversations" onClose={onClose} className="import-modal">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="source-select">Select Source</label>
+          <select 
+            id="source-select"
+            value={source} 
+            onChange={(e) => setSource(e.target.value as typeof source)}
+            className="source-select"
+          >
+            {Object.entries(sourceInfo).map(([key, info]) => (
+              <option key={key} value={key}>
+                {info.icon} {info.name}
+              </option>
+            ))}
+          </select>
+          <p className="source-description">{sourceInfo[source].description}</p>
+        </div>
 
-          <details className="export-help">
-            <summary>📥 Need your export file? Here's how to get it</summary>
-            <ol>
-              {sourceInfo[source].exportSteps.map((step, i) => (
-                <li key={i}>{step}</li>
-              ))}
-            </ol>
-            {sourceInfo[source].exportUrl && (
-              <a href={sourceInfo[source].exportUrl} target="_blank" rel="noopener noreferrer" className="export-link">
-                → Open {sourceInfo[source].name} export page
-              </a>
-            )}
-          </details>
-
-          <div className="form-group">
-            <label htmlFor="file-input">Select File</label>
-            <input
-              id="file-input"
-              type="file"
-              accept="application/json"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="file-input"
-            />
-            {file && <p className="file-name">📄 {file.name}</p>}
-          </div>
-
-          {settings?.auto_merge_duplicates && (
-            <div className="import-info">
-              ℹ️ Auto-merge duplicates is enabled. Existing conversations will be skipped.
-            </div>
+        <details className="export-help">
+          <summary>📥 Need your export file? Here's how to get it</summary>
+          <ol>
+            {sourceInfo[source].exportSteps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+          {sourceInfo[source].exportUrl && (
+            <a href={sourceInfo[source].exportUrl} target="_blank" rel="noopener noreferrer" className="export-link">
+              → Open {sourceInfo[source].name} export page
+            </a>
           )}
+        </details>
 
-          <div className="modal-actions">
-            <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" className="primary" disabled={!file}>
-              Import from {sourceInfo[source].name}
-            </button>
+        <div className="form-group">
+          <label htmlFor="file-input">Select File</label>
+          <input
+            id="file-input"
+            type="file"
+            accept="application/json"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="file-input"
+          />
+          {file && <p className="file-name">📄 {file.name}</p>}
+        </div>
+
+        {settings?.auto_merge_duplicates && (
+          <div className="import-info">
+            ℹ️ Auto-merge duplicates is enabled. Existing conversations will be skipped.
           </div>
-        </form>
-        {status && <div className="status-success">{status}</div>}
-        {error && <div className="status-error">{error}</div>}
-      </div>
-    </div>
+        )}
+
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit" className="primary" disabled={!file}>
+            Import from {sourceInfo[source].name}
+          </button>
+        </div>
+      </form>
+      {status && <div className="status-success">{status}</div>}
+      {error && <div className="status-error">{error}</div>}
+    </ModalShell>
   );
 }
 
@@ -2350,173 +2505,171 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Import & Export Settings</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
-        </div>
-
-        <div className="settings-tabs">
-          <button 
-            className={activeTab === 'import' ? 'active' : ''} 
-            onClick={() => setActiveTab('import')}
-          >
-            Import Settings
-          </button>
-          <button 
-            className={activeTab === 'history' ? 'active' : ''} 
-            onClick={() => setActiveTab('history')}
-          >
-            Import History
-          </button>
-        </div>
-
-        <div className="settings-content">
-          {loading ? (
-            <div className="loading">Loading...</div>
-          ) : activeTab === 'import' && settings ? (
-            <div className="settings-panel">
-              <div className="settings-section">
-                <h3>File Format Preferences</h3>
-                <div className="form-group">
-                  <label>Allowed Formats (comma-separated):</label>
-                  <input
-                    type="text"
-                    value={settings.allowed_formats}
-                    onChange={(e) => updateSetting('allowed_formats', e.target.value)}
-                    placeholder="json,csv,xml"
-                  />
-                  <small>Supported: json, csv, xml</small>
-                </div>
-                <div className="form-group">
-                  <label>Default Format:</label>
-                  <select
-                    value={settings.default_format}
-                    onChange={(e) => updateSetting('default_format', e.target.value)}
-                  >
-                    <option value="json">JSON</option>
-                    <option value="csv">CSV</option>
-                    <option value="xml">XML</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <h3>Import Behavior</h3>
-                <div className="form-group checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={settings.auto_merge_duplicates}
-                      onChange={(e) => updateSetting('auto_merge_duplicates', e.target.checked)}
-                    />
-                    Auto-merge duplicate conversations
-                  </label>
-                  <small>Automatically merge imported conversations with existing ones if they have the same source ID</small>
-                </div>
-                <div className="form-group checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={settings.keep_separate}
-                      onChange={(e) => updateSetting('keep_separate', e.target.checked)}
-                    />
-                    Keep imported data separate
-                  </label>
-                  <small>Create separate archives for each import instead of merging with existing data</small>
-                </div>
-                <div className="form-group checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={settings.skip_empty_conversations}
-                      onChange={(e) => updateSetting('skip_empty_conversations', e.target.checked)}
-                    />
-                    Skip empty conversations
-                  </label>
-                  <small>Don't import conversations that have no messages</small>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button onClick={onClose}>Close</button>
-                <button 
-                  className="primary" 
-                  onClick={handleSaveSettings}
-                  disabled={saving}
-                >
-                  {saving ? "Saving..." : "Save Settings"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="history-panel">
-              <div className="history-header">
-                <h3>Past Imports</h3>
-                <p className="text-muted">View and manage your import history</p>
-              </div>
-              {history.length === 0 ? (
-                <div className="empty">No import history yet</div>
-              ) : (
-                <div className="history-list">
-                  <table className="history-table">
-                    <thead>
-                      <tr>
-                        <th>Date & Time</th>
-                        <th>File Name</th>
-                        <th>Source</th>
-                        <th>Format</th>
-                        <th>Status</th>
-                        <th>Imported</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((item) => (
-                        <tr key={item.id}>
-                          <td>{formatDate(item.created_at)}</td>
-                          <td className="filename">{item.filename}</td>
-                          <td>{item.source_type}</td>
-                          <td>{item.file_format.toUpperCase()}</td>
-                          <td>{getStatusBadge(item.status)}</td>
-                          <td>{item.imported_count} conversations</td>
-                          <td>
-                            <button
-                              className="icon-btn delete-import-btn"
-                              onClick={() => handleDeleteImport(item.id)}
-                              title="Delete this import and its conversations"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {history.some(h => h.error_message) && (
-                    <div className="error-details">
-                      <h4>Error Details</h4>
-                      {history.filter(h => h.error_message).map(h => (
-                        <div key={h.id} className="error-item">
-                          <strong>{h.filename}:</strong> {h.error_message}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+    <ModalShell title="Import & Export Settings" onClose={onClose} className="settings-modal">
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button 
+          className={activeTab === 'import' ? 'active' : ''} 
+          onClick={() => setActiveTab('import')}
+          role="tab"
+          aria-selected={activeTab === 'import'}
+        >
+          Import Settings
+        </button>
+        <button 
+          className={activeTab === 'history' ? 'active' : ''} 
+          onClick={() => setActiveTab('history')}
+          role="tab"
+          aria-selected={activeTab === 'history'}
+        >
+          Import History
+        </button>
       </div>
-    </div>
+
+      <div className="settings-content">
+        {loading ? (
+          <div className="loading">Loading...</div>
+        ) : activeTab === 'import' && settings ? (
+          <div className="settings-panel">
+            <div className="settings-section">
+              <h3>File Format Preferences</h3>
+              <div className="form-group">
+                <label>Allowed Formats (comma-separated):</label>
+                <input
+                  type="text"
+                  value={settings.allowed_formats}
+                  onChange={(e) => updateSetting('allowed_formats', e.target.value)}
+                  placeholder="json,csv,xml"
+                />
+                <small>Supported: json, csv, xml</small>
+              </div>
+              <div className="form-group">
+                <label>Default Format:</label>
+                <select
+                  value={settings.default_format}
+                  onChange={(e) => updateSetting('default_format', e.target.value)}
+                >
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                  <option value="xml">XML</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <h3>Import Behavior</h3>
+              <div className="form-group checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.auto_merge_duplicates}
+                    onChange={(e) => updateSetting('auto_merge_duplicates', e.target.checked)}
+                  />
+                  Auto-merge duplicate conversations
+                </label>
+                <small>Automatically merge imported conversations with existing ones if they have the same source ID</small>
+              </div>
+              <div className="form-group checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.keep_separate}
+                    onChange={(e) => updateSetting('keep_separate', e.target.checked)}
+                  />
+                  Keep imported data separate
+                </label>
+                <small>Create separate archives for each import instead of merging with existing data</small>
+              </div>
+              <div className="form-group checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.skip_empty_conversations}
+                    onChange={(e) => updateSetting('skip_empty_conversations', e.target.checked)}
+                  />
+                  Skip empty conversations
+                </label>
+                <small>Don't import conversations that have no messages</small>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={onClose}>Close</button>
+              <button 
+                className="primary" 
+                onClick={handleSaveSettings}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save Settings"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="history-panel">
+            <div className="history-header">
+              <h3>Past Imports</h3>
+              <p className="text-muted">View and manage your import history</p>
+            </div>
+            {history.length === 0 ? (
+              <div className="empty">No import history yet</div>
+            ) : (
+              <div className="history-list">
+                <table className="history-table">
+                  <thead>
+                    <tr>
+                      <th>Date & Time</th>
+                      <th>File Name</th>
+                      <th>Source</th>
+                      <th>Format</th>
+                      <th>Status</th>
+                      <th>Imported</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((item) => (
+                      <tr key={item.id}>
+                        <td>{formatDate(item.created_at)}</td>
+                        <td className="filename">{item.filename}</td>
+                        <td>{item.source_type}</td>
+                        <td>{item.file_format.toUpperCase()}</td>
+                        <td>{getStatusBadge(item.status)}</td>
+                        <td>{item.imported_count} conversations</td>
+                        <td>
+                          <button
+                            className="icon-btn delete-import-btn"
+                            onClick={() => handleDeleteImport(item.id)}
+                            title="Delete this import and its conversations"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {history.some(h => h.error_message) && (
+                  <div className="error-details">
+                    <h4>Error Details</h4>
+                    {history.filter(h => h.error_message).map(h => (
+                      <div key={h.id} className="error-item">
+                        <strong>{h.filename}:</strong> {h.error_message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </ModalShell>
   );
 }
 
 function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [duplicates, setDuplicates] = useState<DuplicatesData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [strategy, setStrategy] = useState<'source_id' | 'title' | 'both'>('source_id');
   const [selectedForDeletion, setSelectedForDeletion] = useState<Set<number>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -2551,12 +2704,18 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
   const loadDuplicates = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await fetch(`${API_URL}/conversations/duplicates?strategy=${strategy}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
       setDuplicates(data);
     } catch (error) {
       console.error("Failed to load duplicates:", error);
+      setDuplicates(null);
+      setError("Couldn't load duplicate scan. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -2669,123 +2828,12 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal duplicates-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Find Duplicate Conversations</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
-        </div>
-
-        <div className="strategy-selector">
-          <label>Detection Method:</label>
-          <select value={strategy} onChange={(e) => setStrategy(e.target.value as typeof strategy)}>
-            <option value="source_id">By Source ID (original conversation ID)</option>
-            <option value="title">By Title (exact match)</option>
-            <option value="both">Both Methods (comprehensive)</option>
-          </select>
-        </div>
-
-        {!loading && duplicates && (
-          <div className="duplicates-summary">
-            <div className="stat">
-              <span className="label">Duplicate Groups:</span>
-              <span className="value">{duplicates.total_groups}</span>
-            </div>
-            <div className="stat">
-              <span className="label">Total Duplicates:</span>
-              <span className="value">{duplicates.total_duplicates}</span>
-            </div>
-            <div className="stat">
-              <span className="label">Selected for Deletion:</span>
-              <span className="value">{selectedForDeletion.size}</span>
-            </div>
-          </div>
-        )}
-
-        <div className="duplicates-content">
-          {loading ? (
-            <div className="loading">Loading duplicates...</div>
-          ) : !duplicates || duplicates.groups.length === 0 ? (
-            <div className="empty">
-              <p>No duplicate conversations found!</p>
-              <small>Try a different detection method or import more conversations.</small>
-            </div>
-          ) : (
-            <div className="duplicate-groups">
-              {duplicates.groups.map((group) => (
-                <div key={group.key} className="duplicate-group">
-                  <div className="group-header" onClick={() => toggleGroupExpanded(group.key)}>
-                    <div className="group-info">
-                      <h3>
-                        {getSourceInfo(group.source).icon} {group.title || "Untitled"}
-                      </h3>
-                      <div className="group-meta">
-                        <span>{group.count} duplicates</span>
-                        <span>•</span>
-                        <span>{group.total_messages} total messages</span>
-                        {group.source_id && (
-                          <>
-                            <span>•</span>
-                            <span>ID: {group.source_id.slice(0, 8)}...</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <button className="expand-btn">
-                      {expandedGroups.has(group.key) ? "▼" : "▶"}
-                    </button>
-                  </div>
-
-                  {expandedGroups.has(group.key) && (
-                    <div className="group-content">
-                      <div className="group-actions">
-                        <button onClick={() => keepNewestInGroup(group)}>
-                          Keep Newest
-                        </button>
-                        <button onClick={() => keepOldestInGroup(group)}>
-                          Keep Oldest
-                        </button>
-                        <button onClick={() => selectAllInGroup(group)}>
-                          Select All
-                        </button>
-                      </div>
-
-                      <div className="conversations-list">
-                        {group.conversations.map((conv) => (
-                          <div key={conv.id} className="duplicate-conversation">
-                            <input
-                              type="checkbox"
-                              checked={selectedForDeletion.has(conv.id)}
-                              onChange={() => toggleSelection(conv.id)}
-                            />
-                            <div className="conv-info">
-                              <div className="conv-title">
-                                {conv.title || "Untitled"}
-                              </div>
-                              <div className="conv-details">
-                                <span>ID: {conv.id}</span>
-                                <span>•</span>
-                                <span>{conv.message_count} messages</span>
-                                {conv.created_at && (
-                                  <>
-                                    <span>•</span>
-                                    <span>{formatDateTime(conv.created_at)}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="modal-actions">
+    <ModalShell
+      title="Find Duplicate Conversations"
+      onClose={onClose}
+      className="duplicates-modal"
+      actions={
+        <>
           <button onClick={onClose}>Cancel</button>
           <button
             className="danger"
@@ -2794,9 +2842,132 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           >
             {deleting ? "Deleting..." : `Delete Selected (${selectedForDeletion.size})`}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="strategy-selector">
+        <label>Detection Method:</label>
+        <select value={strategy} onChange={(e) => setStrategy(e.target.value as typeof strategy)}>
+          <option value="source_id">By Source ID (original conversation ID)</option>
+          <option value="title">By Title (exact match)</option>
+          <option value="both">Both Methods (comprehensive)</option>
+        </select>
       </div>
-    </div>
+
+      {!loading && duplicates && (
+        <div className="duplicates-summary">
+          <div className="stat">
+            <span className="label">Duplicate Groups:</span>
+            <span className="value">{duplicates.total_groups}</span>
+          </div>
+          <div className="stat">
+            <span className="label">Total Duplicates:</span>
+            <span className="value">{duplicates.total_duplicates}</span>
+          </div>
+          <div className="stat">
+            <span className="label">Selected for Deletion:</span>
+            <span className="value">{selectedForDeletion.size}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="duplicates-content">
+        {loading ? (
+          <div className="loading">Loading duplicates...</div>
+        ) : error ? (
+          <div className="status-error">{error}</div>
+        ) : !duplicates || duplicates.groups.length === 0 ? (
+          <div className="empty">
+            <p>No duplicate conversations found!</p>
+            <small>Try a different detection method or import more conversations.</small>
+          </div>
+        ) : (
+          <div className="duplicate-groups">
+            {duplicates.groups.map((group) => (
+                <div key={group.key} className="duplicate-group">
+                  <div
+                    className="group-header"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={expandedGroups.has(group.key)}
+                    onClick={() => toggleGroupExpanded(group.key)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleGroupExpanded(group.key);
+                      }
+                    }}
+                  >
+                  <div className="group-info">
+                    <h3>
+                      {getSourceInfo(group.source).icon} {group.title || "Untitled"}
+                    </h3>
+                    <div className="group-meta">
+                      <span>{group.count} duplicates</span>
+                      <span>•</span>
+                      <span>{group.total_messages} total messages</span>
+                      {group.source_id && (
+                        <>
+                          <span>•</span>
+                          <span>ID: {group.source_id.slice(0, 8)}...</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <button className="expand-btn">
+                    {expandedGroups.has(group.key) ? "▼" : "▶"}
+                  </button>
+                </div>
+
+                {expandedGroups.has(group.key) && (
+                  <div className="group-content">
+                    <div className="group-actions">
+                      <button onClick={() => keepNewestInGroup(group)}>
+                        Keep Newest
+                      </button>
+                      <button onClick={() => keepOldestInGroup(group)}>
+                        Keep Oldest
+                      </button>
+                      <button onClick={() => selectAllInGroup(group)}>
+                        Select All
+                      </button>
+                    </div>
+
+                    <div className="conversations-list">
+                      {group.conversations.map((conv) => (
+                        <div key={conv.id} className="duplicate-conversation">
+                          <input
+                            type="checkbox"
+                            checked={selectedForDeletion.has(conv.id)}
+                            onChange={() => toggleSelection(conv.id)}
+                          />
+                          <div className="conv-info">
+                            <div className="conv-title">
+                              {conv.title || "Untitled"}
+                            </div>
+                            <div className="conv-details">
+                              <span>ID: {conv.id}</span>
+                              <span>•</span>
+                              <span>{conv.message_count} messages</span>
+                              {conv.created_at && (
+                                <>
+                                  <span>•</span>
+                                  <span>{formatDateTime(conv.created_at)}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </ModalShell>
   );
 }
 
@@ -2887,86 +3058,93 @@ function ProjectManagerModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content tag-manager-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Manage Projects</h2>
-          <button className="icon-btn" onClick={onClose}>
-            ×
-          </button>
+    <ModalShell title="Manage Projects" onClose={onClose} className="tag-manager-modal" bodyClassName="tag-manager-content">
+      <form onSubmit={handleSubmit} className="tag-form">
+        <h3>Create New Project</h3>
+        <div className="form-group">
+          <label htmlFor="project-name">Project name</label>
+          <input
+            id="project-name"
+            type="text"
+            placeholder="Project name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={saving}
+            required
+          />
         </div>
-
-        <div className="modal-body">
-          <form onSubmit={handleSubmit} className="tag-form">
-            <h3>Create New Project</h3>
+        <div className="form-group">
+          <label htmlFor="project-description">Description</label>
+          <input
+            id="project-description"
+            type="text"
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+        <div className="form-group">
+          <label>Color</label>
+          <div className="tag-color-row">
             <input
-              type="text"
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
               disabled={saving}
-              required
+              aria-label="Project color"
             />
-            <input
-              type="text"
-              placeholder="Description (optional)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={saving}
-            />
-            <div className="color-picker">
-              <label>Color:</label>
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <button type="submit" disabled={saving}>
-              {saving ? "Creating..." : "Create Project"}
-            </button>
-            {status && <div className="status-message success">{status}</div>}
-            {error && <div className="status-message error">{error}</div>}
-          </form>
-
-          <div className="existing-tags">
-            <h3>Existing Projects ({projects.length})</h3>
-            {projects.length === 0 ? (
-              <p className="empty-message">No projects yet. Create one above!</p>
-            ) : (
-              <div className="tag-list">
-                {projects.map((project) => (
-                  <div key={project.id} className="tag-item">
-                    <div className="tag-info">
-                      <span
-                        className="tag-color"
-                        style={{ backgroundColor: project.color || "#8B5CF6" }}
-                      ></span>
-                      <div className="tag-details">
-                        <strong>{project.name}</strong>
-                        {project.description && <p>{project.description}</p>}
-                        <small>{project.conversation_count} conversations</small>
-                      </div>
-                    </div>
-                    <div className="tag-actions">
-                      <button
-                        className="delete-btn"
-                        onClick={() => handleDelete(project)}
-                        disabled={saving}
-                        title="Delete project"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <span className="tag-preview" style={{ backgroundColor: color }}>
+              {name.trim() || "Preview"}
+            </span>
           </div>
         </div>
+        <div className="tag-form-actions">
+          <button type="submit" className="primary" disabled={saving}>
+            {saving ? "Creating..." : "Create Project"}
+          </button>
+        </div>
+        {status && <div className="status-success">{status}</div>}
+        {error && <div className="status-error">{error}</div>}
+      </form>
+
+      <div className="tag-list">
+        <div className="tag-list-header">Existing projects</div>
+        {projects.length === 0 ? (
+          <div className="empty">No projects yet. Create one above.</div>
+        ) : (
+          <div className="tag-list-items">
+            {projects.map((project) => (
+              <div key={project.id} className="tag-row">
+                <div className="tag-row-main">
+                  <span className="tag-badge" style={{ backgroundColor: project.color || "#8B5CF6", color: "white" }}>
+                    {project.name}
+                  </span>
+                  <div className="tag-row-info">
+                    <div className="tag-row-name">{project.name}</div>
+                    <div className="tag-row-meta">
+                      {project.description || "No description"}
+                    </div>
+                  </div>
+                </div>
+                <div className="tag-row-actions">
+                  <span className="tag-count">{project.conversation_count} conv</span>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handleDelete(project)}
+                    disabled={saving}
+                    title="Delete project"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -3094,200 +3272,135 @@ function AnalyticsDashboard({ onClose }: { onClose: () => void }) {
     );
   }
 
-  const overlayStyle: React.CSSProperties = {
-    position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)",
-    zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center",
-    overflowY: "auto", padding: "24px 16px",
-  };
-
-  const panelStyle: React.CSSProperties = {
-    background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-    borderRadius: 16, width: "100%", maxWidth: 860, padding: 32,
-    boxShadow: "0 16px 48px rgba(0,0,0,0.4)", position: "relative",
-  };
-
-  const sectionStyle: React.CSSProperties = {
-    marginBottom: 32,
-  };
-
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 15, fontWeight: 600, color: "var(--text-primary)",
-    marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid var(--border-color)",
-  };
-
-  const cardRowStyle: React.CSSProperties = {
-    display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32,
-  };
-
-  const cardStyle: React.CSSProperties = {
-    background: "var(--bg-tertiary)", borderRadius: 12, padding: "20px 24px",
-    border: "1px solid var(--border-color)",
-  };
-
-  const twoColStyle: React.CSSProperties = {
-    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32,
-  };
-
   return (
-    <div className="modal-overlay" style={overlayStyle} onClick={onClose}>
-      <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <BarChart2 size={22} style={{ color: "#3B82F6" }} />
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
-              Conversation Analytics
-            </h2>
+    <ModalShell title="Conversation Analytics" onClose={onClose} className="analytics-modal">
+      {loading && (
+        <div className="analytics-state">Loading analytics…</div>
+      )}
+
+      {error && (
+        <div className="status-error">Failed to load analytics: {error}</div>
+      )}
+
+      {data && (
+        <div className="analytics-layout">
+          <div className="analytics-card-row">
+            <div className="analytics-card analytics-card-blue">
+              <div className="analytics-card-value">
+                {data.total_conversations.toLocaleString()}
+              </div>
+              <div className="analytics-card-label">Total Conversations</div>
+            </div>
+            <div className="analytics-card analytics-card-green">
+              <div className="analytics-card-value">
+                {data.total_messages.toLocaleString()}
+              </div>
+              <div className="analytics-card-label">Total Messages</div>
+            </div>
+            <div className="analytics-card analytics-card-amber">
+              <div className="analytics-card-value">
+                {data.avg_messages_per_conversation.toFixed(1)}
+              </div>
+              <div className="analytics-card-label">Avg Messages / Conv.</div>
+            </div>
           </div>
-          <button
-            className="icon-btn"
-            onClick={onClose}
-            style={{ fontSize: 20, lineHeight: 1 }}
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
 
-        {loading && (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-secondary)" }}>
-            Loading analytics…
-          </div>
-        )}
+          <section className="analytics-section">
+            <div className="analytics-section-title">Conversations Over Time</div>
+            <TimelineChart months={data.conversations_by_month} />
+          </section>
 
-        {error && (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "#EF4444" }}>
-            Failed to load analytics: {error}
-          </div>
-        )}
-
-        {data && (
-          <>
-            {/* Summary cards */}
-            <div style={cardRowStyle}>
-              <div style={cardStyle}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#3B82F6" }}>
-                  {data.total_conversations.toLocaleString()}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Total Conversations</div>
-              </div>
-              <div style={cardStyle}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#10B981" }}>
-                  {data.total_messages.toLocaleString()}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Total Messages</div>
-              </div>
-              <div style={cardStyle}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#F59E0B" }}>
-                  {data.avg_messages_per_conversation.toFixed(1)}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Avg Messages / Conv.</div>
-              </div>
-            </div>
-
-            {/* Activity over time */}
-            <div style={sectionStyle}>
-              <div style={sectionTitleStyle}>Conversations Over Time</div>
-              <TimelineChart months={data.conversations_by_month} />
-            </div>
-
-            <div style={twoColStyle}>
-              {/* Source distribution */}
-              <div style={sectionStyle}>
-                <div style={sectionTitleStyle}>By Source</div>
-                {Object.keys(data.sources).length === 0 ? (
-                  <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data.</p>
-                ) : (() => {
-                  const maxSrc = Math.max(...Object.values(data.sources));
-                  return Object.entries(data.sources)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([src, cnt]) => (
-                      <HorizontalBar
-                        key={src}
-                        label={src.charAt(0).toUpperCase() + src.slice(1)}
-                        value={cnt}
-                        max={maxSrc}
-                        color={SOURCE_COLORS[src] || "#6B7280"}
-                        count={cnt}
-                      />
-                    ));
-                })()}
-              </div>
-
-              {/* Role distribution */}
-              <div style={sectionStyle}>
-                <div style={sectionTitleStyle}>Messages by Role</div>
-                {Object.keys(data.role_distribution).length === 0 ? (
-                  <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data.</p>
-                ) : (() => {
-                  const maxRole = Math.max(...Object.values(data.role_distribution));
-                  return Object.entries(data.role_distribution)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([role, cnt]) => (
-                      <HorizontalBar
-                        key={role}
-                        label={role.charAt(0).toUpperCase() + role.slice(1)}
-                        value={cnt}
-                        max={maxRole}
-                        color={ROLE_COLORS[role] || "#6B7280"}
-                        count={cnt}
-                      />
-                    ));
-                })()}
-              </div>
-            </div>
-
-            <div style={twoColStyle}>
-              {/* Activity by day of week */}
-              <div style={sectionStyle}>
-                <div style={sectionTitleStyle}>Activity by Day of Week</div>
-                <DayChart activityByDay={data.activity_by_day} />
-              </div>
-
-              {/* Top tags */}
-              {data.top_tags.length > 0 && (
-                <div style={sectionStyle}>
-                  <div style={sectionTitleStyle}>Top Tags</div>
-                  {(() => {
-                    const maxTag = Math.max(...data.top_tags.map((t) => t.count));
-                    return data.top_tags.map((tag) => (
-                      <HorizontalBar
-                        key={tag.name}
-                        label={tag.name}
-                        value={tag.count}
-                        max={maxTag}
-                        color={tag.color}
-                        count={tag.count}
-                      />
-                    ));
-                  })()}
-                </div>
-              )}
-            </div>
-
-            {/* Projects breakdown */}
-            {data.projects.length > 0 && (
-              <div style={sectionStyle}>
-                <div style={sectionTitleStyle}>Conversations by Project</div>
-                {(() => {
-                  const maxProj = Math.max(...data.projects.map((p) => p.count));
-                  return data.projects.map((proj) => (
+          <div className="analytics-two-column">
+            <section className="analytics-section">
+              <div className="analytics-section-title">By Source</div>
+              {Object.keys(data.sources).length === 0 ? (
+                <p className="analytics-empty">No data.</p>
+              ) : (() => {
+                const maxSrc = Math.max(...Object.values(data.sources));
+                return Object.entries(data.sources)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([src, cnt]) => (
                     <HorizontalBar
-                      key={proj.name}
-                      label={proj.name}
-                      value={proj.count}
-                      max={maxProj}
-                      color={proj.color}
-                      count={proj.count}
+                      key={src}
+                      label={src.charAt(0).toUpperCase() + src.slice(1)}
+                      value={cnt}
+                      max={maxSrc}
+                      color={SOURCE_COLORS[src] || "#6B7280"}
+                      count={cnt}
+                    />
+                  ));
+              })()}
+            </section>
+
+            <section className="analytics-section">
+              <div className="analytics-section-title">Messages by Role</div>
+              {Object.keys(data.role_distribution).length === 0 ? (
+                <p className="analytics-empty">No data.</p>
+              ) : (() => {
+                const maxRole = Math.max(...Object.values(data.role_distribution));
+                return Object.entries(data.role_distribution)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([role, cnt]) => (
+                    <HorizontalBar
+                      key={role}
+                      label={role.charAt(0).toUpperCase() + role.slice(1)}
+                      value={cnt}
+                      max={maxRole}
+                      color={ROLE_COLORS[role] || "#6B7280"}
+                      count={cnt}
+                    />
+                  ));
+              })()}
+            </section>
+          </div>
+
+          <div className="analytics-two-column">
+            <section className="analytics-section">
+              <div className="analytics-section-title">Activity by Day of Week</div>
+              <DayChart activityByDay={data.activity_by_day} />
+            </section>
+
+            {data.top_tags.length > 0 && (
+              <section className="analytics-section">
+                <div className="analytics-section-title">Top Tags</div>
+                {(() => {
+                  const maxTag = Math.max(...data.top_tags.map((t) => t.count));
+                  return data.top_tags.map((tag) => (
+                    <HorizontalBar
+                      key={tag.name}
+                      label={tag.name}
+                      value={tag.count}
+                      max={maxTag}
+                      color={tag.color}
+                      count={tag.count}
                     />
                   ));
                 })()}
-              </div>
+              </section>
             )}
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+
+          {data.projects.length > 0 && (
+            <section className="analytics-section">
+              <div className="analytics-section-title">Conversations by Project</div>
+              {(() => {
+                const maxProj = Math.max(...data.projects.map((p) => p.count));
+                return data.projects.map((proj) => (
+                  <HorizontalBar
+                    key={proj.name}
+                    label={proj.name}
+                    value={proj.count}
+                    max={maxProj}
+                    color={proj.color}
+                    count={proj.count}
+                  />
+                ));
+              })()}
+            </section>
+          )}
+        </div>
+      )}
+    </ModalShell>
   );
 }
 
@@ -3320,48 +3433,70 @@ function MoveToProjectModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-        <div className="modal-header">
-          <h2>Move to Project</h2>
-          <button className="icon-btn" onClick={onClose}>
-            ×
+    <ModalShell
+      title="Move to Project"
+      onClose={onClose}
+      className="move-project-modal"
+      actions={
+        <>
+          <button onClick={onClose} disabled={moving}>
+            Cancel
           </button>
-        </div>
-
-        <div className="modal-body">
-          <p><strong>Conversation:</strong> {conversation.title || "Untitled"}</p>
-          <p><strong>Current Project:</strong> {conversation.project?.name || "Uncategorized"}</p>
-          
-          <div style={{ marginTop: '20px' }}>
-            <label><strong>Move to:</strong></label>
-            <select
-              value={selectedProjectId !== null ? selectedProjectId.toString() : "none"}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedProjectId(val === "none" ? null : parseInt(val));
-              }}
-              style={{ width: '100%', marginTop: '10px', padding: '8px' }}
-            >
-              <option value="none">📂 Uncategorized</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  📁 {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button onClick={onClose} disabled={moving}>
-              Cancel
-            </button>
-            <button onClick={handleMove} disabled={moving} className="primary-btn">
-              {moving ? "Moving..." : "Move"}
-            </button>
-          </div>
-        </div>
+          <button onClick={handleMove} disabled={moving} className="primary">
+            {moving ? "Moving..." : "Move"}
+          </button>
+        </>
+      }
+    >
+      <div className="move-project-summary">
+        <p><strong>Conversation:</strong> {conversation.title || "Untitled"}</p>
+        <p><strong>Current Project:</strong> {conversation.project?.name || "Uncategorized"}</p>
       </div>
-    </div>
+
+      <div className="form-group">
+        <label htmlFor="move-project-select"><strong>Move to:</strong></label>
+        <select
+          id="move-project-select"
+          value={selectedProjectId !== null ? selectedProjectId.toString() : "none"}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedProjectId(val === "none" ? null : parseInt(val, 10));
+          }}
+        >
+          <option value="none">📂 Uncategorized</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              📁 {project.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </ModalShell>
+  );
+}
+
+function KeyboardShortcutsModal({ onClose }: { onClose: () => void }) {
+  const shortcuts = [
+    ["Ctrl/Cmd + K", "Focus search"],
+    ["Ctrl/Cmd + I", "Open import"],
+    ["Ctrl/Cmd + ,", "Open settings"],
+    ["Ctrl/Cmd + E", "Open export menu"],
+    ["Ctrl/Cmd + B", "Toggle sidebar"],
+    ["Arrow Up / Down", "Navigate conversations"],
+    ["Esc", "Close open overlays"],
+    ["Shift + ?", "Open keyboard shortcuts"],
+  ];
+
+  return (
+    <ModalShell title="Keyboard Shortcuts" onClose={onClose} className="shortcut-modal">
+      <div className="shortcut-list">
+        {shortcuts.map(([keys, description]) => (
+          <div key={keys} className="shortcut-row">
+            <kbd>{keys}</kbd>
+            <span>{description}</span>
+          </div>
+        ))}
+      </div>
+    </ModalShell>
   );
 }
