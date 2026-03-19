@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
@@ -153,15 +153,63 @@ def search_conversations(
     source: str | None = Query(None, description="Filter by source"),
     search_messages: bool = Query(True, description="Also search message content"),
 ) -> ConversationListResponse:
-    """Search conversations by title and optionally message content."""
-    
+    """Search conversations by title and message content using full-text search."""
+    try:
+        return _search_conversations_fts(db, q, page, page_size, source)
+    except OperationalError:
+        return _search_conversations_ilike(db, q, page, page_size, source, search_messages)
+
+
+def _search_conversations_fts(
+    db: Session,
+    q: str,
+    page: int,
+    page_size: int,
+    source: str | None,
+) -> ConversationListResponse:
+    """Full-text search using PostgreSQL tsvector (requires migrate_add_fulltext_search)."""
+    query = (
+        db.query(Conversation)
+        .options(joinedload(Conversation.tags))
+        .filter(text("conversations.search_vector @@ plainto_tsquery('english', :q)"))
+        .params(q=q)
+    )
+    if source:
+        query = query.filter(Conversation.source == source)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    conversations = (
+        query.order_by(
+            text("ts_rank(conversations.search_vector, plainto_tsquery('english', :q)) DESC"),
+            Conversation.created_at.desc().nulls_last(),
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+    pages = (total + page_size - 1) // page_size
+    return ConversationListResponse(
+        items=conversations,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages,
+    )
+
+
+def _search_conversations_ilike(
+    db: Session,
+    q: str,
+    page: int,
+    page_size: int,
+    source: str | None,
+    search_messages: bool,
+) -> ConversationListResponse:
+    """Fallback ILIKE search when full-text search is not available."""
     search_term = f"%{q}%"
-    
-    # Build search conditions
     conditions = [Conversation.title.ilike(search_term)]
-    
     if search_messages:
-        # Subquery to find conversations with matching messages
         message_match = (
             db.query(Message.conversation_id)
             .filter(Message.content.ilike(search_term))
@@ -169,28 +217,27 @@ def search_conversations(
             .subquery()
         )
         conditions.append(Conversation.id.in_(db.query(message_match.c.conversation_id)))
-    
-    query = db.query(Conversation).filter(or_(*conditions))
-    
-    # Apply source filter
+
+    query = (
+        db.query(Conversation)
+        .options(joinedload(Conversation.tags))
+        .filter(or_(*conditions))
+    )
     if source:
         query = query.filter(Conversation.source == source)
-    
-    # Get total
+
     total = query.count()
-    
-    # Sort by relevance (title matches first) then by date
-    query = query.order_by(
-        Conversation.title.ilike(search_term).desc(),
-        Conversation.created_at.desc().nulls_last()
-    )
-    
-    # Paginate
     offset = (page - 1) * page_size
-    conversations = query.offset(offset).limit(page_size).all()
-    
+    conversations = (
+        query.order_by(
+            Conversation.title.ilike(search_term).desc(),
+            Conversation.created_at.desc().nulls_last(),
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
     pages = (total + page_size - 1) // page_size
-    
     return ConversationListResponse(
         items=conversations,
         total=total,

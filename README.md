@@ -163,6 +163,14 @@ ChatArchive supports optional Supabase integration for cloud storage and Postgre
    python migrate_to_supabase.py
    ```
 
+7. **Enable Full-Text Search (Optional, recommended)**
+   
+   For faster, relevance-ranked search instead of basic ILIKE:
+   ```bash
+   cd backend
+   python migrate_add_fulltext_search.py
+   ```
+
 ### Benefits of Supabase Integration
 
 - ✅ **Cloud Storage**: Raw export files backed up to Supabase storage
@@ -266,7 +274,7 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 - [x] Comprehensive test coverage
 - [x] Intelligent tagging system with 9 predefined categories
 - [x] Tag-based filtering and organization
-- [ ] Full-text search with FTS5
+- [x] Full-text search (PostgreSQL tsvector with GIN index)
 - [ ] Advanced filtering
 - [ ] Semantic search with embeddings
 - [ ] Conversation summaries
