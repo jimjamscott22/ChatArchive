@@ -7,7 +7,7 @@ $rootDir = $PSScriptRoot
 
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
-foreach ($cmd in @("npm", "python", "pyinstaller")) {
+foreach ($cmd in @("npm", "python")) {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
         Write-Error "$cmd not found. Ensure it is installed and on your PATH."
         exit 1
@@ -39,10 +39,18 @@ Write-Host ""
 Write-Host "=== Step 2/2: Bundling with PyInstaller ===" -ForegroundColor Cyan
 Set-Location $rootDir
 
-# Install pyinstaller into the active environment if missing
-python -m pip install pyinstaller --quiet
+# Use the backend venv's Python so PyInstaller sees all installed packages
+$venvPython = Join-Path $rootDir "backend\venv\Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+    Write-Error "backend\venv not found. Run: cd backend && python -m venv venv && venv\Scripts\pip install -r requirements.txt"
+    exit 1
+}
 
-pyinstaller chatarchive.spec --noconfirm
+# Install pyinstaller into the venv if missing, then use its script directly
+& $venvPython -m pip install pyinstaller --quiet
+$venvPyInstaller = Join-Path $rootDir "backend\venv\Scripts\pyinstaller.exe"
+
+& $venvPyInstaller chatarchive.spec --noconfirm
 
 $exePath = Join-Path $rootDir "dist\ChatArchive\ChatArchive.exe"
 if (-not (Test-Path $exePath)) {
