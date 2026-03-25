@@ -47,9 +47,16 @@ def parse_claude_export(payload: Any) -> list[dict[str, Any]]:
             # Claude messages have text content and sender
             sender = msg.get("sender", "unknown")
             role = "user" if sender == "human" else "assistant"
-            
-            # Get content
-            content = msg.get("text", "")
+
+            # Build content from structured content blocks if available,
+            # otherwise fall back to the flat "text" field (which replaces
+            # artifacts/tool-use blocks with "not supported" placeholders).
+            content_blocks = msg.get("content", [])
+            if content_blocks and isinstance(content_blocks, list):
+                content = _extract_content_from_blocks(content_blocks)
+            else:
+                content = msg.get("text", "")
+
             if not content.strip():
                 continue
             
@@ -78,6 +85,72 @@ def parse_claude_export(payload: Any) -> list[dict[str, Any]]:
         })
     
     return parsed
+
+
+def _extract_content_from_blocks(blocks: list[dict]) -> str:
+    """
+    Reconstruct readable message content from Claude's structured
+    content blocks, replacing the flat 'text' field which substitutes
+    artifact / tool-use blocks with "not supported" placeholders.
+    """
+    parts: list[str] = []
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+
+        if block_type == "text":
+            text = block.get("text", "").strip()
+            if text:
+                parts.append(text)
+
+        elif block_type == "thinking":
+            # Extended-thinking blocks — include as collapsed context
+            text = block.get("thinking", "").strip()
+            if text:
+                parts.append(f"<details><summary>Thinking</summary>\n\n{text}\n</details>")
+
+        elif block_type == "tool_use":
+            name = block.get("name", "unknown_tool")
+            inp = block.get("input", {})
+
+            if name == "artifacts":
+                # Artifact blocks carry the actual generated content
+                title = inp.get("title", "Artifact")
+                lang = _artifact_type_to_lang(inp.get("type", ""))
+                artifact_content = inp.get("content", "")
+                if artifact_content:
+                    parts.append(f"**{title}**\n```{lang}\n{artifact_content}\n```")
+            elif name == "web_search":
+                query = inp.get("query", "")
+                parts.append(f"*Searched the web: \"{query}\"*")
+            else:
+                # Generic tool use — show a brief summary
+                message = block.get("message")
+                if message:
+                    parts.append(f"*{message}*")
+
+        # tool_result and token_budget blocks are skipped — they don't
+        # contain user-facing content worth preserving.
+
+    return "\n\n".join(parts)
+
+
+def _artifact_type_to_lang(artifact_type: str) -> str:
+    """Map Claude artifact MIME types to Markdown code-fence languages."""
+    mapping = {
+        "application/vnd.ant.code": "",
+        "application/vnd.ant.react": "jsx",
+        "text/html": "html",
+        "text/css": "css",
+        "text/javascript": "javascript",
+        "application/json": "json",
+        "text/markdown": "markdown",
+        "text/x-python": "python",
+        "image/svg+xml": "svg",
+    }
+    return mapping.get(artifact_type, "")
 
 
 def parse_timestamp(timestamp: Any) -> datetime | None:

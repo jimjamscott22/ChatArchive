@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
@@ -27,6 +27,7 @@ from app.importers.copilot import parse_copilot_export
 from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag, Project
 from app.supabase_client import get_connection_info, get_dashboard_url, is_supabase_configured
 from app.storage import upload_export_file, list_storage_files
+from app.query_filters import apply_conversation_filters
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
@@ -91,22 +92,8 @@ def list_conversations(
     """List all conversations with pagination and filtering."""
     
     query = db.query(Conversation).options(joinedload(Conversation.tags), joinedload(Conversation.project))
-    
-    # Apply source filter
-    if source:
-        query = query.filter(Conversation.source == source)
-    
-    # Apply tag filter
-    if tag:
-        query = query.join(Conversation.tags).filter(Tag.name == tag)
-    
-    # Apply project filter
-    if project_id is not None:
-        if project_id == -1:
-            # -1 means uncategorized (no project)
-            query = query.filter(Conversation.project_id.is_(None))
-        else:
-            query = query.filter(Conversation.project_id == project_id)
+
+    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
 
     # Get total count
     total = query.count()
@@ -151,17 +138,71 @@ def search_conversations(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     source: str | None = Query(None, description="Filter by source"),
+    tag: str | None = Query(None, description="Filter by tag name"),
+    project_id: int | None = Query(None, description="Filter by project ID (use -1 for uncategorized)"),
     search_messages: bool = Query(True, description="Also search message content"),
 ) -> ConversationListResponse:
-    """Search conversations by title and optionally message content."""
-    
+    """Search conversations by title and message content using full-text search."""
+    try:
+        return _search_conversations_fts(db, q, page, page_size, source, tag, project_id)
+    except OperationalError:
+        return _search_conversations_ilike(db, q, page, page_size, source, tag, project_id, search_messages)
+
+
+def _search_conversations_fts(
+    db: Session,
+    q: str,
+    page: int,
+    page_size: int,
+    source: str | None,
+    tag: str | None,
+    project_id: int | None,
+) -> ConversationListResponse:
+    """Full-text search using PostgreSQL tsvector (requires migrate_add_fulltext_search)."""
+    query = (
+        db.query(Conversation)
+        .options(joinedload(Conversation.tags))
+        .filter(text("conversations.search_vector @@ plainto_tsquery('english', :q)"))
+        .params(q=q)
+    )
+
+    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    conversations = (
+        query.order_by(
+            text("ts_rank(conversations.search_vector, plainto_tsquery('english', :q)) DESC"),
+            Conversation.created_at.desc().nulls_last(),
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+    pages = (total + page_size - 1) // page_size
+    return ConversationListResponse(
+        items=conversations,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages,
+    )
+
+
+def _search_conversations_ilike(
+    db: Session,
+    q: str,
+    page: int,
+    page_size: int,
+    source: str | None,
+    tag: str | None,
+    project_id: int | None,
+    search_messages: bool,
+) -> ConversationListResponse:
+    """Fallback ILIKE search when full-text search is not available."""
     search_term = f"%{q}%"
-    
-    # Build search conditions
     conditions = [Conversation.title.ilike(search_term)]
-    
     if search_messages:
-        # Subquery to find conversations with matching messages
         message_match = (
             db.query(Message.conversation_id)
             .filter(Message.content.ilike(search_term))
@@ -169,28 +210,27 @@ def search_conversations(
             .subquery()
         )
         conditions.append(Conversation.id.in_(db.query(message_match.c.conversation_id)))
-    
-    query = db.query(Conversation).filter(or_(*conditions))
-    
-    # Apply source filter
-    if source:
-        query = query.filter(Conversation.source == source)
-    
-    # Get total
-    total = query.count()
-    
-    # Sort by relevance (title matches first) then by date
-    query = query.order_by(
-        Conversation.title.ilike(search_term).desc(),
-        Conversation.created_at.desc().nulls_last()
+
+    query = (
+        db.query(Conversation)
+        .options(joinedload(Conversation.tags))
+        .filter(or_(*conditions))
     )
-    
-    # Paginate
+
+    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
+
+    total = query.count()
     offset = (page - 1) * page_size
-    conversations = query.offset(offset).limit(page_size).all()
-    
+    conversations = (
+        query.order_by(
+            Conversation.title.ilike(search_term).desc(),
+            Conversation.created_at.desc().nulls_last(),
+        )
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
     pages = (total + page_size - 1) // page_size
-    
     return ConversationListResponse(
         items=conversations,
         total=total,
@@ -1875,11 +1915,26 @@ def _open_browser_delayed(url: str, delay: float = 2.0) -> None:
 
 if __name__ == "__main__":
     if getattr(sys, "frozen", False):
+        # When running as a PyInstaller bundle there is no attached console,
+        # so sys.stdout/stderr are None.  Redirect them to a log file so that
+        # uvicorn's logging formatters (which call stream.isatty()) don't crash.
+        log_path = Path(sys.executable).parent / "chatarchive.log"
+        _log_file = open(log_path, "w", buffering=1, encoding="utf-8")
+        sys.stdout = _log_file
+        sys.stderr = _log_file
+        logging.basicConfig(stream=_log_file, level=logging.INFO)
+
         threading.Thread(
             target=_open_browser_delayed,
             args=("http://localhost:8000",),
             daemon=True,
         ).start()
-        uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            reload=False,
+            log_config=None,
+        )
     else:
         uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
