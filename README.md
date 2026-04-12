@@ -23,6 +23,7 @@
 
 - **Node.js** (v18 or higher)
 - **Python** (v3.10 or higher)
+- **uv** for Python environment and dependency management
 - **npm** or **yarn**
 
 ### Current Status
@@ -71,10 +72,10 @@ See [Tagging Documentation](docs/TAGGING.md) for details on the classification a
    npm install
    ```
 
-3. **Install backend dependencies**
+3. **Install backend dependencies with uv**
    ```bash
    cd ../backend
-   pip install -r requirements.txt
+   uv sync
    ```
 
 4. **Set up environment variables**
@@ -85,18 +86,26 @@ See [Tagging Documentation](docs/TAGGING.md) for details on the classification a
 
 5. **Initialize the database**
    ```bash
-   python init_db.py
+   uv run python init_db.py
    ```
 
-6. **Start the application**
-   
-   In one terminal (backend):
+6. **Start the application with one script**
+   ```bash
+   ./run-chatarchive.sh
+   ```
+
+   This script starts:
+   - a `uv sync` for the backend first
+   - `npm install` for the frontend if `node_modules` is missing
+   - the backend with `uv run python -m app.main`
+   - the frontend with `npm run dev`
+
+   If you prefer running them separately:
    ```bash
    cd backend
-   python -m app.main
+   uv run python -m app.main
    ```
-   
-   In another terminal (frontend):
+
    ```bash
    cd frontend
    npm run dev
@@ -216,7 +225,7 @@ You can also run the script locally:
 cd backend
 SUPABASE_URL=https://yourproject.supabase.co \
 SUPABASE_ANON_KEY=your-anon-key \
-python keepalive_supabase.py
+uv run python keepalive_supabase.py
 ```
 
 Set `SUPABASE_KEEPALIVE_TABLE` to override the default table (`conversations`) used for the ping.

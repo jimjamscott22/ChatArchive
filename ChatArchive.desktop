@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ChatArchive
+Comment=Start the ChatArchive backend and frontend dev servers
+Exec=/home/jimjamscozz/Desktop/GitHub-Repos/ChatArchive/run-chatarchive.sh
+Path=/home/jimjamscozz/Desktop/GitHub-Repos/ChatArchive
+Terminal=true
+Categories=Development;

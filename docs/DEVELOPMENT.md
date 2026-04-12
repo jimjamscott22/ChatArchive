@@ -1,20 +1,18 @@
 # Development Setup
 
 ## Backend
-1. Create a virtual environment and install dependencies:
+1. Install dependencies with `uv`:
    ```bash
    cd backend
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   uv sync
    ```
 2. Initialize the database:
    ```bash
-   python -m app.database.init_db
+   uv run python init_db.py
    ```
 3. Run the API:
    ```bash
-   python -m app.main
+   uv run python -m app.main
    ```
 
 ## Frontend
@@ -29,3 +27,16 @@
    ```
 
 The frontend expects the API at `http://localhost:8000`.
+
+## One-command local run
+
+From the repo root:
+
+```bash
+./run-chatarchive.sh
+```
+
+This script:
+- runs `uv sync` in `backend/`
+- runs `npm install` in `frontend/` if needed
+- starts both dev servers together

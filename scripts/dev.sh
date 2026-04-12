@@ -16,8 +16,16 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+echo "Syncing backend dependencies with uv..."
+(cd "${BACKEND_DIR}" && uv sync)
+
+if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
+  echo "Installing frontend dependencies..."
+  (cd "${FRONTEND_DIR}" && npm install)
+fi
+
 echo "Starting backend..."
-(cd "${BACKEND_DIR}" && python -m app.main) &
+(cd "${BACKEND_DIR}" && uv run python -m app.main) &
 BACKEND_PID=$!
 
 echo "Starting frontend..."
