@@ -8,7 +8,7 @@ This document describes how to test the ChatArchive LLM parsers.
 
 ```bash
 cd backend
-pip install -r requirements.txt
+uv sync
 ```
 
 ### Run All Tests
@@ -162,7 +162,7 @@ python -m pytest tests/
 
 Install all required dependencies:
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### Database Issues

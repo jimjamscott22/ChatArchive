@@ -40,14 +40,14 @@ Write-Host "=== Step 2/2: Bundling with PyInstaller ===" -ForegroundColor Cyan
 Set-Location $rootDir
 
 # Use the backend venv's Python so PyInstaller sees all installed packages
-$venvPython = Join-Path $rootDir "backend\venv\Scripts\python.exe"
+$venvPython = Join-Path $rootDir "backend\.venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
-    Write-Error "backend\venv not found. Run: cd backend && python -m venv venv && venv\Scripts\pip install -r requirements.txt"
+    Write-Error "backend\venv not found. Run: cd backend && uv sync"
     exit 1
 }
 
 # Install pyinstaller into the venv if missing, then use its script directly
-& $venvPython -m pip install pyinstaller --quiet
+& uv run pip install pyinstaller --quiet
 $venvPyInstaller = Join-Path $rootDir "backend\venv\Scripts\pyinstaller.exe"
 
 & $venvPyInstaller chatarchive.spec --noconfirm
