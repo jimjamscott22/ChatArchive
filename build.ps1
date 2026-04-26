@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 $rootDir = $PSScriptRoot
 
-# â”€â”€ Prerequisites â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â--â-- Prerequisites â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--
 
 foreach ($cmd in @("npm", "python")) {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
@@ -14,7 +14,7 @@ foreach ($cmd in @("npm", "python")) {
     }
 }
 
-# â”€â”€ Step 1: Build the React frontend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â--â-- Step 1: Build the React frontend â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--
 
 Write-Host ""
 Write-Host "=== Step 1/2: Building frontend ===" -ForegroundColor Cyan
@@ -28,12 +28,12 @@ try {
 
 $distDir = Join-Path $rootDir "frontend\dist"
 if (-not (Test-Path $distDir)) {
-    Write-Error "Frontend build failed â€” dist folder not found."
+    Write-Error "Frontend build failed â- dist folder not found."
     exit 1
 }
 Write-Host "Frontend built successfully." -ForegroundColor Green
 
-# â”€â”€ Step 2: Bundle with PyInstaller â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â--â-- Step 2: Bundle with PyInstaller â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--
 
 Write-Host ""
 Write-Host "=== Step 2/2: Bundling with PyInstaller ===" -ForegroundColor Cyan
@@ -47,18 +47,18 @@ if (-not (Test-Path $venvPython)) {
 }
 
 # Install pyinstaller into the venv if missing, then use its script directly
-& uv run pip install pyinstaller --quiet
-$venvPyInstaller = Join-Path $rootDir "backend\venv\Scripts\pyinstaller.exe"
+Push-Location backend; uv pip install pyinstaller --quiet; Pop-Location
+$venvPyInstaller = Join-Path $rootDir "backend\.venv\Scripts\pyinstaller.exe"
 
 & $venvPyInstaller chatarchive.spec --noconfirm
 
 $exePath = Join-Path $rootDir "dist\ChatArchive\ChatArchive.exe"
 if (-not (Test-Path $exePath)) {
-    Write-Error "PyInstaller step failed â€” executable not found at $exePath"
+    Write-Error "PyInstaller step failed â- executable not found at $exePath"
     exit 1
 }
 
-# â”€â”€ Done â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â--â-- Done â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--â--
 
 Write-Host ""
 Write-Host "Build complete!" -ForegroundColor Green
