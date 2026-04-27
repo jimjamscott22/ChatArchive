@@ -1523,9 +1523,18 @@ export default function App() {
 
             {selectedConversation && (
               <div className="header-actions">
-                <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
-                  <MoreVertical size={20} />
-                </button>
+                <div className="header-buttons">
+                  <button
+                    className="icon-btn icon-btn-danger"
+                    onClick={handleDeleteConversation}
+                    title="Delete conversation"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                  <button className="icon-btn" onClick={() => setShowMenu(!showMenu)} title="More options">
+                    <MoreVertical size={20} />
+                  </button>
+                </div>
                 {showMenu && (
                   <div className="dropdown-menu">
                     <button
