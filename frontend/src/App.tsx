@@ -1084,394 +1084,396 @@ export default function App() {
           </div>
         </div>
 
-        {!sidebarCollapsed && (
-          <div className="sidebar-top">
-            <div className="search-box">
-              <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
-              <Search size={16} className="search-icon" />
-              <input
-                id="conversation-search"
-                type="text"
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-            </div>
-
-            <section className="sidebar-panel sidebar-primary-panel">
-              <div className="sidebar-panel-header">
-                <div>
-                  <p className="sidebar-panel-label">Library</p>
-                  <h2 className="sidebar-panel-title">{highlightQuery ? "Search results" : "Browse archive"}</h2>
-                </div>
-                <span className="sidebar-panel-meta">{conversations.length} shown</span>
+        <div className="sidebar-scroll-area">
+          {!sidebarCollapsed && (
+            <div className="sidebar-top">
+              <div className="search-box">
+                <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
+                <Search size={16} className="search-icon" />
+                <input
+                  id="conversation-search"
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                />
               </div>
 
-              <button className="import-btn" onClick={() => setShowImportModal(true)}>
-                <Upload size={16} />
-                Import Conversations
-              </button>
-
-              <div className="sidebar-summary-grid">
-                <div className="sidebar-summary-card">
-                  <span className="sidebar-summary-label">Messages</span>
-                  <strong>{totalMessagesInView}</strong>
-                </div>
-                <div className="sidebar-summary-card">
-                  <span className="sidebar-summary-label">Sources</span>
-                  <strong>{sourceBreakdown.length}</strong>
-                </div>
-              </div>
-            </section>
-
-            <section className="sidebar-panel">
-              <div className="sidebar-panel-header">
-                <div>
-                  <p className="sidebar-panel-label">Filters</p>
-                  <h2 className="sidebar-panel-title">Narrow the view</h2>
-                </div>
-                {hasActiveFilters && (
-                  <button className="sidebar-inline-action" onClick={clearAllFilters}>
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              <div className="sidebar-filters">
-                <div className="source-filter">
-                  <label htmlFor="source-filter">Filter by source:</label>
-                  <select id="source-filter" value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
-                    <option value="all">All Sources</option>
-                    <option value="chatgpt">💬 ChatGPT</option>
-                    <option value="claude">🤖 Claude</option>
-                    <option value="gemini">✨ Gemini</option>
-                    <option value="copilot">👨‍💻 Copilot</option>
-                  </select>
+              <section className="sidebar-panel sidebar-primary-panel">
+                <div className="sidebar-panel-header">
+                  <div>
+                    <p className="sidebar-panel-label">Library</p>
+                    <h2 className="sidebar-panel-title">{highlightQuery ? "Search results" : "Browse archive"}</h2>
+                  </div>
+                  <span className="sidebar-panel-meta">{conversations.length} shown</span>
                 </div>
 
-                <div className="tag-filter">
-                  <label htmlFor="tag-filter">Filter by tag:</label>
-                  <select
-                    id="tag-filter"
-                    value={selectedTag || "all"}
-                    onChange={(e) => handleTagFilter(e.target.value === "all" ? null : e.target.value)}
-                  >
-                    <option value="all">All Tags</option>
-                    {allTags.map((tag) => (
-                      <option key={tag.id} value={tag.name}>
-                        {tag.name} ({tag.conversation_count})
-                      </option>
-                    ))}
-                  </select>
+                <button className="import-btn" onClick={() => setShowImportModal(true)}>
+                  <Upload size={16} />
+                  Import Conversations
+                </button>
+
+                <div className="sidebar-summary-grid">
+                  <div className="sidebar-summary-card">
+                    <span className="sidebar-summary-label">Messages</span>
+                    <strong>{totalMessagesInView}</strong>
+                  </div>
+                  <div className="sidebar-summary-card">
+                    <span className="sidebar-summary-label">Sources</span>
+                    <strong>{sourceBreakdown.length}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="sidebar-panel">
+                <div className="sidebar-panel-header">
+                  <div>
+                    <p className="sidebar-panel-label">Filters</p>
+                    <h2 className="sidebar-panel-title">Narrow the view</h2>
+                  </div>
+                  {hasActiveFilters && (
+                    <button className="sidebar-inline-action" onClick={clearAllFilters}>
+                      Clear
+                    </button>
+                  )}
                 </div>
 
-                <div className="project-filter">
-                  <label htmlFor="project-filter">Filter by project:</label>
-                  <select
-                    id="project-filter"
-                    value={selectedProject !== null ? selectedProject.toString() : "all"}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "all") {
-                        handleProjectFilter(null);
-                      } else if (val === "-1") {
-                        handleProjectFilter(-1);
-                      } else {
-                        handleProjectFilter(parseInt(val, 10));
-                      }
-                    }}
-                  >
-                    <option value="all">All Projects</option>
-                    <option value="-1">📂 Uncategorized ({uncategorizedCount})</option>
-                    {allProjects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        📁 {project.name} ({project.conversation_count})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="sidebar-filters">
+                  <div className="source-filter">
+                    <label htmlFor="source-filter">Filter by source:</label>
+                    <select id="source-filter" value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
+                      <option value="all">All Sources</option>
+                      <option value="chatgpt">💬 ChatGPT</option>
+                      <option value="claude">🤖 Claude</option>
+                      <option value="gemini">✨ Gemini</option>
+                      <option value="copilot">👨‍💻 Copilot</option>
+                    </select>
+                  </div>
 
-                {allProjects.length > 0 && (
-                  <div className={`project-drop-zones ${draggedConversationId ? "drag-mode" : ""}`}>
-                    <label>Projects - drag here to assign</label>
-                    <div
-                      className={`project-drop-zone${dragOverProject === "uncategorized" ? " drag-over" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOverProject("uncategorized");
-                      }}
-                      onDragLeave={() => setDragOverProject(null)}
-                      onDrop={async () => {
-                        if (draggedConversationId !== null) {
-                          await moveConversationToProject(draggedConversationId, null);
-                        }
-                        setDragOverProject(null);
-                        setDraggedConversationId(null);
-                      }}
-                      onClick={() => handleProjectFilter(-1)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleProjectFilter(-1);
-                        }
-                      }}
-                      title="Uncategorized conversations"
+                  <div className="tag-filter">
+                    <label htmlFor="tag-filter">Filter by tag:</label>
+                    <select
+                      id="tag-filter"
+                      value={selectedTag || "all"}
+                      onChange={(e) => handleTagFilter(e.target.value === "all" ? null : e.target.value)}
                     >
-                      📂 Uncategorized
-                    </div>
-                    {allProjects.map((project) => (
+                      <option value="all">All Tags</option>
+                      {allTags.map((tag) => (
+                        <option key={tag.id} value={tag.name}>
+                          {tag.name} ({tag.conversation_count})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="project-filter">
+                    <label htmlFor="project-filter">Filter by project:</label>
+                    <select
+                      id="project-filter"
+                      value={selectedProject !== null ? selectedProject.toString() : "all"}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "all") {
+                          handleProjectFilter(null);
+                        } else if (val === "-1") {
+                          handleProjectFilter(-1);
+                        } else {
+                          handleProjectFilter(parseInt(val, 10));
+                        }
+                      }}
+                    >
+                      <option value="all">All Projects</option>
+                      <option value="-1">📂 Uncategorized ({uncategorizedCount})</option>
+                      {allProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          📁 {project.name} ({project.conversation_count})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {allProjects.length > 0 && (
+                    <div className={`project-drop-zones ${draggedConversationId ? "drag-mode" : ""}`}>
+                      <label>Projects - drag here to assign</label>
                       <div
-                        key={project.id}
-                        className={`project-drop-zone${dragOverProject === project.id ? " drag-over" : ""}`}
-                        style={{ borderLeftColor: project.color || "#8B5CF6" }}
+                        className={`project-drop-zone${dragOverProject === "uncategorized" ? " drag-over" : ""}`}
                         role="button"
                         tabIndex={0}
                         onDragOver={(e) => {
                           e.preventDefault();
-                          setDragOverProject(project.id);
+                          setDragOverProject("uncategorized");
                         }}
                         onDragLeave={() => setDragOverProject(null)}
                         onDrop={async () => {
                           if (draggedConversationId !== null) {
-                            await moveConversationToProject(draggedConversationId, project.id);
+                            await moveConversationToProject(draggedConversationId, null);
                           }
                           setDragOverProject(null);
                           setDraggedConversationId(null);
                         }}
-                        onClick={() => handleProjectFilter(project.id)}
+                        onClick={() => handleProjectFilter(-1)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            handleProjectFilter(project.id);
+                            handleProjectFilter(-1);
                           }
                         }}
-                        title={project.description || project.name}
+                        title="Uncategorized conversations"
                       >
-                        <span
-                          className="project-drop-color-dot"
-                          style={{ backgroundColor: project.color || "#8B5CF6" }}
-                        />
-                        {project.name}
+                        📂 Uncategorized
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="sidebar-panel sidebar-tools-panel">
-              <div className="sidebar-panel-header">
-                <div>
-                  <p className="sidebar-panel-label">Tools</p>
-                  <h2 className="sidebar-panel-title">Organize the archive</h2>
+                      {allProjects.map((project) => (
+                        <div
+                          key={project.id}
+                          className={`project-drop-zone${dragOverProject === project.id ? " drag-over" : ""}`}
+                          style={{ borderLeftColor: project.color || "#8B5CF6" }}
+                          role="button"
+                          tabIndex={0}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOverProject(project.id);
+                          }}
+                          onDragLeave={() => setDragOverProject(null)}
+                          onDrop={async () => {
+                            if (draggedConversationId !== null) {
+                              await moveConversationToProject(draggedConversationId, project.id);
+                            }
+                            setDragOverProject(null);
+                            setDraggedConversationId(null);
+                          }}
+                          onClick={() => handleProjectFilter(project.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleProjectFilter(project.id);
+                            }
+                          }}
+                          title={project.description || project.name}
+                        >
+                          <span
+                            className="project-drop-color-dot"
+                            style={{ backgroundColor: project.color || "#8B5CF6" }}
+                          />
+                          {project.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              </section>
+
+              <section className="sidebar-panel sidebar-tools-panel">
+                <div className="sidebar-panel-header">
+                  <div>
+                    <p className="sidebar-panel-label">Tools</p>
+                    <h2 className="sidebar-panel-title">Organize the archive</h2>
+                  </div>
+                </div>
+
+                <div className="sidebar-tool-grid">
+                  <button className="sidebar-tool-btn" onClick={() => setShowAnalyticsModal(true)}>
+                    <BarChart2 size={16} />
+                    Analytics
+                  </button>
+
+                  <button className="sidebar-tool-btn" onClick={() => setShowDuplicatesModal(true)}>
+                    <Copy size={16} />
+                    Duplicates
+                  </button>
+
+                  <button
+                    className="sidebar-tool-btn sidebar-tool-btn-accent"
+                    onClick={autoTagAllConversations}
+                    disabled={autoTagging}
+                    title="Automatically tag all conversations based on content"
+                  >
+                    <Tag size={16} />
+                    {autoTagging ? "Auto-tagging..." : "Auto-tag all"}
+                  </button>
+
+                  <button className="sidebar-tool-btn" onClick={() => setShowTagModal(true)}>
+                    <Tag size={16} />
+                    Manage tags
+                  </button>
+
+                  <button className="sidebar-tool-btn" onClick={() => setShowProjectModal(true)}>
+                    <Settings size={16} />
+                    Manage projects
+                  </button>
+
+                  <button className="sidebar-tool-btn" onClick={() => setShowSettingsModal(true)}>
+                    <Settings size={16} />
+                    Settings
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar">
+            {loading || isSearching ? (
+              <div className="skeleton-container">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="skeleton-card">
+                    <div className="skeleton-header">
+                      <div className="skeleton-avatar"></div>
+                      <div className="skeleton-info">
+                        <div className="skeleton-title"></div>
+                        <div className="skeleton-meta"></div>
+                      </div>
+                    </div>
+                    <div className="skeleton-preview"></div>
+                  </div>
+                ))}
               </div>
-
-              <div className="sidebar-tool-grid">
-                <button className="sidebar-tool-btn" onClick={() => setShowAnalyticsModal(true)}>
-                  <BarChart2 size={16} />
-                  Analytics
+            ) : conversations.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">💬</div>
+                <h3>No conversations yet</h3>
+                <p>Import your first conversation to get started</p>
+                <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
+                  <Upload size={16} />
+                  Import Conversations
                 </button>
-
-                <button className="sidebar-tool-btn" onClick={() => setShowDuplicatesModal(true)}>
-                  <Copy size={16} />
-                  Duplicates
-                </button>
-
-                <button
-                  className="sidebar-tool-btn sidebar-tool-btn-accent"
-                  onClick={autoTagAllConversations}
-                  disabled={autoTagging}
-                  title="Automatically tag all conversations based on content"
+              </div>
+            ) : (
+              conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedConversation?.id === conv.id}
+                  aria-label={conv.title || "Untitled conversation"}
+                  onClick={() => loadConversation(conv.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      loadConversation(conv.id);
+                    }
+                  }}
+                  draggable={true}
+                  onDragStart={(e) => {
+                    setDraggedConversationId(conv.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(conv.id));
+                  }}
+                  onDragEnd={() => {
+                    setDraggedConversationId(null);
+                    setDragOverProject(null);
+                  }}
                 >
-                  <Tag size={16} />
-                  {autoTagging ? "Auto-tagging..." : "Auto-tag all"}
-                </button>
-
-                <button className="sidebar-tool-btn" onClick={() => setShowTagModal(true)}>
-                  <Tag size={16} />
-                  Manage tags
-                </button>
-
-                <button className="sidebar-tool-btn" onClick={() => setShowProjectModal(true)}>
-                  <Settings size={16} />
-                  Manage projects
-                </button>
-
-                <button className="sidebar-tool-btn" onClick={() => setShowSettingsModal(true)}>
-                  <Settings size={16} />
-                  Settings
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar">
-          {loading || isSearching ? (
-            <div className="skeleton-container">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="skeleton-card">
-                  <div className="skeleton-header">
-                    <div className="skeleton-avatar"></div>
-                    <div className="skeleton-info">
-                      <div className="skeleton-title"></div>
-                      <div className="skeleton-meta"></div>
-                    </div>
-                  </div>
-                  <div className="skeleton-preview"></div>
-                </div>
-              ))}
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">💬</div>
-              <h3>No conversations yet</h3>
-              <p>Import your first conversation to get started</p>
-              <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
-                <Upload size={16} />
-                Import Conversations
-              </button>
-            </div>
-          ) : (
-            conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selectedConversation?.id === conv.id}
-                aria-label={conv.title || "Untitled conversation"}
-                onClick={() => loadConversation(conv.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    loadConversation(conv.id);
-                  }
-                }}
-                draggable={true}
-                onDragStart={(e) => {
-                  setDraggedConversationId(conv.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', String(conv.id));
-                }}
-                onDragEnd={() => {
-                  setDraggedConversationId(null);
-                  setDragOverProject(null);
-                }}
-              >
-                <div className="card-header">
-                  <div className="card-left">
-                    <div className="source-avatar" data-source={conv.source}>
-                      {getSourceInfo(conv.source).icon}
-                    </div>
-                    <div className="conv-info">
-                      <h3 className="conv-title">
-                        {renderHighlightedText(conv.title || "Untitled", highlightQuery)}
-                      </h3>
-                      <div className="conv-meta">
-                        <span className="conv-time">{getRelativeTime(conv.updated_at || conv.created_at)}</span>
-                        <span className="conv-stats">
-                          {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
-                        </span>
-                        {conv.word_count && (
-                          <span className="conv-stats">{estimateReadingTime(conv.word_count)}</span>
-                        )}
+                  <div className="card-header">
+                    <div className="card-left">
+                      <div className="source-avatar" data-source={conv.source}>
+                        {getSourceInfo(conv.source).icon}
+                      </div>
+                      <div className="conv-info">
+                        <h3 className="conv-title">
+                          {renderHighlightedText(conv.title || "Untitled", highlightQuery)}
+                        </h3>
+                        <div className="conv-meta">
+                          <span className="conv-time">{getRelativeTime(conv.updated_at || conv.created_at)}</span>
+                          <span className="conv-stats">
+                            {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
+                          </span>
+                          {conv.word_count && (
+                            <span className="conv-stats">{estimateReadingTime(conv.word_count)}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    <div className="card-right">
+                      <button
+                        className="icon-btn open-new-window-btn"
+                        title="Open in new window"
+                        onClick={(e) => openConversationInNewWindow(conv.id, e)}
+                      >
+                        <ExternalLink size={16} />
+                      </button>
+                      <span className="tag source" data-source={conv.source}>
+                        {getSourceInfo(conv.source).name}
+                      </span>
+                    </div>
                   </div>
-                  <div className="card-right">
-                    <button
-                      className="icon-btn open-new-window-btn"
-                      title="Open in new window"
-                      onClick={(e) => openConversationInNewWindow(conv.id, e)}
-                    >
-                      <ExternalLink size={16} />
-                    </button>
-                    <span className="tag source" data-source={conv.source}>
-                      {getSourceInfo(conv.source).name}
-                    </span>
+                  <div className="card-preview">
+                    <p className="conv-preview">
+                      {renderHighlightedText(getMessagePreview(conv), highlightQuery)}
+                    </p>
                   </div>
-                </div>
-                <div className="card-preview">
-                  <p className="conv-preview">
-                    {renderHighlightedText(getMessagePreview(conv), highlightQuery)}
-                  </p>
-                </div>
-                {conv.tags && conv.tags.length > 0 && (
-                  <div className="card-tags">
-                    {conv.tags.map((tag) => (
+                  {conv.tags && conv.tags.length > 0 && (
+                    <div className="card-tags">
+                      {conv.tags.map((tag) => (
+                        <button 
+                          key={tag.id} 
+                          type="button"
+                          className="tag tag-badge tag-filter-chip" 
+                          style={{
+                            backgroundColor: tag.color || '#6B7280',
+                            color: 'white',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTagFilter(tag.name);
+                          }}
+                          title={tag.description || tag.name}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {conv.project && (
+                    <div className="card-project">
                       <button 
-                        key={tag.id} 
                         type="button"
-                        className="tag tag-badge tag-filter-chip" 
+                        className="project-badge project-badge-btn" 
                         style={{
-                          backgroundColor: tag.color || '#6B7280',
+                          backgroundColor: conv.project.color || '#8B5CF6',
                           color: 'white',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'inline-block',
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleTagFilter(tag.name);
+                          handleProjectFilter(conv.project!.id);
                         }}
-                        title={tag.description || tag.name}
+                        title={conv.project.description || conv.project.name}
                       >
-                        {tag.name}
+                        📁 {conv.project.name}
                       </button>
-                    ))}
-                  </div>
-                )}
-                {conv.project && (
-                  <div className="card-project">
-                    <button 
-                      type="button"
-                      className="project-badge project-badge-btn" 
-                      style={{
-                        backgroundColor: conv.project.color || '#8B5CF6',
-                        color: 'white',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        display: 'inline-block',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleProjectFilter(conv.project!.id);
-                      }}
-                      title={conv.project.description || conv.project.name}
-                    >
-                      📁 {conv.project.name}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {!sidebarCollapsed && totalPages > 1 && (
+            <div className="pagination-controls">
+              <button
+                className="pagination-btn"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={loading || currentPage <= 1}
+              >
+                Prev
+              </button>
+              <span className="pagination-info">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                className="pagination-btn"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={loading || currentPage >= totalPages}
+              >
+                Next
+              </button>
+            </div>
           )}
         </div>
-
-        {!sidebarCollapsed && totalPages > 1 && (
-          <div className="pagination-controls">
-            <button
-              className="pagination-btn"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={loading || currentPage <= 1}
-            >
-              Prev
-            </button>
-            <span className="pagination-info">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              className="pagination-btn"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={loading || currentPage >= totalPages}
-            >
-              Next
-            </button>
-          </div>
-        )}
 
         {/* Sidebar collapse handle */}
         <button
@@ -2480,7 +2482,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       month: "short", 
       day: "numeric",
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
     });
   };
 
@@ -3500,3 +3502,5 @@ function KeyboardShortcutsModal({ onClose }: { onClose: () => void }) {
     </ModalShell>
   );
 }
+
+
