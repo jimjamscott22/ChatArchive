@@ -273,6 +273,16 @@ body {
   height: 32px;
 }
 
+.icon-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+}
+
+.icon-btn-danger:hover::before {
+  background: #ef4444;
+}
+
 .supabase-link {
   color: var(--text-secondary);
   text-decoration: none;
