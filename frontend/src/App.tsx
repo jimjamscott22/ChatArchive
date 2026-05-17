@@ -8,6 +8,35 @@ import ModalShell from "./components/ModalShell";
 const API_URL = "http://localhost:8000";
 const PAGE_SIZE = 100;
 
+type ThemeId =
+  | 'dark'
+  | 'light'
+  | 'sepia'
+  | 'coffee'
+  | 'rose'
+  | 'sunset'
+  | 'nord'
+  | 'dracula'
+  | 'solarized-dark'
+  | 'ocean'
+  | 'forest';
+
+const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
+  { id: 'dark', label: 'Dark', swatch: '#1c1812' },
+  { id: 'light', label: 'Light', swatch: '#f5edd8' },
+  { id: 'sepia', label: 'Sepia', swatch: '#f1e4c8' },
+  { id: 'coffee', label: 'Coffee', swatch: '#3b2a1a' },
+  { id: 'rose', label: 'Rose', swatch: '#f3d6d2' },
+  { id: 'sunset', label: 'Sunset', swatch: '#f4a261' },
+  { id: 'nord', label: 'Nord', swatch: '#2e3440' },
+  { id: 'dracula', label: 'Dracula', swatch: '#bd93f9' },
+  { id: 'solarized-dark', label: 'Solarized', swatch: '#002b36' },
+  { id: 'ocean', label: 'Ocean', swatch: '#0b2545' },
+  { id: 'forest', label: 'Forest', swatch: '#1f2a1f' },
+];
+
+const THEME_STORAGE_KEY = 'chatarchive-theme';
+
 type Conversation = {
   id: number;
   source: string;
@@ -130,7 +159,14 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<ThemeId>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
+      if (saved && THEMES.some(t => t.id === saved)) return saved;
+    } catch { /* ignore */ }
+    return 'dark';
+  });
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -171,6 +207,9 @@ export default function App() {
   // Apply theme
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch { /* ignore */ }
   }, [theme]);
 
   // Keyboard shortcuts
@@ -268,7 +307,7 @@ export default function App() {
   }, [selectedConversation, conversations]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
   const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null) => {
@@ -2057,15 +2096,40 @@ export default function App() {
         <KeyboardShortcutsModal onClose={() => setShowShortcutsModal(false)} />
       )}
 
-      <button
-        className="theme-palette-btn"
-        onClick={toggleTheme}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-      >
-        <Palette size={30} />
-        <span className="theme-palette-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
-      </button>
+      <div className="theme-palette-wrapper">
+        <button
+          className="theme-palette-btn"
+          onClick={() => setPaletteOpen(o => !o)}
+          title="Choose theme"
+          aria-label="Choose theme"
+          aria-expanded={paletteOpen}
+        >
+          <Palette size={30} />
+          <span className="theme-palette-label">Theme</span>
+        </button>
+        {paletteOpen && (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+              onClick={() => setPaletteOpen(false)}
+            />
+            <div className="theme-palette-menu" role="menu" style={{ zIndex: 501 }}>
+              {THEMES.map(t => (
+                <button
+                  key={t.id}
+                  className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                  onClick={() => { setTheme(t.id); setPaletteOpen(false); }}
+                  role="menuitemradio"
+                  aria-checked={theme === t.id}
+                >
+                  <span className="theme-swatch" style={{ background: t.swatch }} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

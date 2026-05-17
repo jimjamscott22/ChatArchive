@@ -57,6 +57,266 @@
   --key-shadow-press: inset 0 1px 0 rgba(100, 60, 10, 0.3), inset 0 -1px 0 rgba(255,255,255,0.2);
 }
 
+[data-theme="dark"] {
+  --bg-primary: #1c1812;
+  --bg-secondary: #231e16;
+  --bg-tertiary: #2c2519;
+  --app-background: var(--bg-primary);
+  --text-primary: #e8dcc8;
+  --text-secondary: #b8a88a;
+  --text-muted: #7a6a52;
+  --border-color: #3d3126;
+  --accent: #c4944a;
+  --accent-hover: #d4aa6a;
+  --accent-subtle: rgba(196, 148, 74, 0.12);
+  --surface-panel: rgba(35, 30, 22, 0.72);
+  --surface-panel-strong: rgba(35, 30, 22, 0.92);
+  --surface-elevated: rgba(25, 21, 15, 0.78);
+  --hero-gradient: linear-gradient(135deg, rgba(35, 30, 22, 0.94), rgba(25, 21, 15, 0.96));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.4), 0 3px 8px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.45), 0 6px 12px rgba(0, 0, 0, 0.3);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.05);
+}
+
+[data-theme="sepia"] {
+  --bg-primary: #f1e4c8;
+  --bg-secondary: #e8d9b6;
+  --bg-tertiary: #ddc99e;
+  --app-background: linear-gradient(180deg, #f4e8cf 0%, #e6d6b0 100%);
+  --text-primary: #2b1d0e;
+  --text-secondary: #5a3f22;
+  --text-muted: #8a6a40;
+  --border-color: #c2a36a;
+  --accent: #8a4b1a;
+  --accent-hover: #a35c25;
+  --accent-subtle: rgba(138, 75, 26, 0.12);
+  --surface-panel: rgba(232, 217, 182, 0.86);
+  --surface-panel-strong: rgba(221, 201, 158, 0.95);
+  --surface-elevated: rgba(214, 192, 148, 0.9);
+  --hero-gradient: linear-gradient(135deg, rgba(232, 217, 182, 0.97), rgba(214, 192, 148, 0.99));
+  --shadow-sm: 0 1px 3px rgba(100, 70, 30, 0.18);
+  --shadow-md: 0 4px 8px rgba(100, 70, 30, 0.2), 0 1px 3px rgba(100, 70, 30, 0.12);
+  --shadow-lg: 0 8px 20px rgba(100, 70, 30, 0.22), 0 3px 8px rgba(100, 70, 30, 0.14);
+  --shadow-xl: 0 16px 32px rgba(100, 70, 30, 0.25), 0 6px 12px rgba(100, 70, 30, 0.16);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(100, 60, 10, 0.3), inset 0 1px 0 rgba(255,255,255,0.5);
+  --key-shadow-press: inset 0 1px 0 rgba(100, 60, 10, 0.3), inset 0 -1px 0 rgba(255,255,255,0.2);
+}
+
+[data-theme="coffee"] {
+  --bg-primary: #2a1d12;
+  --bg-secondary: #3b2a1a;
+  --bg-tertiary: #4a3522;
+  --app-background: var(--bg-primary);
+  --text-primary: #f0dcc0;
+  --text-secondary: #c9a87a;
+  --text-muted: #8a6a48;
+  --border-color: #5c4128;
+  --accent: #d49a5c;
+  --accent-hover: #e6b079;
+  --accent-subtle: rgba(212, 154, 92, 0.14);
+  --surface-panel: rgba(59, 42, 26, 0.78);
+  --surface-panel-strong: rgba(59, 42, 26, 0.94);
+  --surface-elevated: rgba(42, 29, 18, 0.82);
+  --hero-gradient: linear-gradient(135deg, rgba(59, 42, 26, 0.95), rgba(42, 29, 18, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.35);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05);
+}
+
+[data-theme="rose"] {
+  --bg-primary: #f3d6d2;
+  --bg-secondary: #ecc6c1;
+  --bg-tertiary: #e2b3ac;
+  --app-background: linear-gradient(180deg, #f7dedb 0%, #e8c0b9 100%);
+  --text-primary: #3a1820;
+  --text-secondary: #6b2f3a;
+  --text-muted: #95586a;
+  --border-color: #c8898f;
+  --accent: #8a2940;
+  --accent-hover: #a33652;
+  --accent-subtle: rgba(138, 41, 64, 0.12);
+  --surface-panel: rgba(236, 198, 193, 0.86);
+  --surface-panel-strong: rgba(226, 179, 172, 0.95);
+  --surface-elevated: rgba(220, 168, 160, 0.9);
+  --hero-gradient: linear-gradient(135deg, rgba(236, 198, 193, 0.97), rgba(220, 168, 160, 0.99));
+  --shadow-sm: 0 1px 3px rgba(120, 40, 60, 0.18);
+  --shadow-md: 0 4px 8px rgba(120, 40, 60, 0.2), 0 1px 3px rgba(120, 40, 60, 0.12);
+  --shadow-lg: 0 8px 20px rgba(120, 40, 60, 0.22), 0 3px 8px rgba(120, 40, 60, 0.14);
+  --shadow-xl: 0 16px 32px rgba(120, 40, 60, 0.25), 0 6px 12px rgba(120, 40, 60, 0.16);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(120, 40, 60, 0.3), inset 0 1px 0 rgba(255,255,255,0.5);
+  --key-shadow-press: inset 0 1px 0 rgba(120, 40, 60, 0.3), inset 0 -1px 0 rgba(255,255,255,0.2);
+}
+
+[data-theme="sunset"] {
+  --bg-primary: #2a1410;
+  --bg-secondary: #3d1f18;
+  --bg-tertiary: #522a20;
+  --app-background: linear-gradient(160deg, #3d1f18 0%, #6b2e1e 50%, #8a3a1c 100%);
+  --text-primary: #fce8d4;
+  --text-secondary: #f4b58a;
+  --text-muted: #c98268;
+  --border-color: #6b3a2a;
+  --accent: #f4a261;
+  --accent-hover: #f6b87f;
+  --accent-subtle: rgba(244, 162, 97, 0.14);
+  --surface-panel: rgba(61, 31, 24, 0.78);
+  --surface-panel-strong: rgba(61, 31, 24, 0.94);
+  --surface-elevated: rgba(42, 20, 16, 0.82);
+  --hero-gradient: linear-gradient(135deg, rgba(82, 42, 32, 0.95), rgba(42, 20, 16, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.35);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.05);
+}
+
+[data-theme="nord"] {
+  --bg-primary: #2e3440;
+  --bg-secondary: #3b4252;
+  --bg-tertiary: #434c5e;
+  --app-background: var(--bg-primary);
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --text-muted: #7e8898;
+  --border-color: #4c566a;
+  --accent: #88c0d0;
+  --accent-hover: #8fbcbb;
+  --accent-subtle: rgba(136, 192, 208, 0.14);
+  --surface-panel: rgba(59, 66, 82, 0.78);
+  --surface-panel-strong: rgba(59, 66, 82, 0.94);
+  --surface-elevated: rgba(46, 52, 64, 0.84);
+  --hero-gradient: linear-gradient(135deg, rgba(59, 66, 82, 0.95), rgba(46, 52, 64, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.45), 0 3px 8px rgba(0, 0, 0, 0.26);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.5), 0 6px 12px rgba(0, 0, 0, 0.3);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+
+[data-theme="dracula"] {
+  --bg-primary: #282a36;
+  --bg-secondary: #343746;
+  --bg-tertiary: #44475a;
+  --app-background: var(--bg-primary);
+  --text-primary: #f8f8f2;
+  --text-secondary: #d8d8c8;
+  --text-muted: #6272a4;
+  --border-color: #44475a;
+  --accent: #bd93f9;
+  --accent-hover: #d0aeff;
+  --accent-subtle: rgba(189, 147, 249, 0.14);
+  --surface-panel: rgba(52, 55, 70, 0.78);
+  --surface-panel-strong: rgba(52, 55, 70, 0.94);
+  --surface-elevated: rgba(40, 42, 54, 0.84);
+  --hero-gradient: linear-gradient(135deg, rgba(52, 55, 70, 0.95), rgba(40, 42, 54, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.34);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+
+[data-theme="solarized-dark"] {
+  --bg-primary: #002b36;
+  --bg-secondary: #073642;
+  --bg-tertiary: #0a4554;
+  --app-background: var(--bg-primary);
+  --text-primary: #fdf6e3;
+  --text-secondary: #93a1a1;
+  --text-muted: #586e75;
+  --border-color: #0a4554;
+  --accent: #268bd2;
+  --accent-hover: #3a9be0;
+  --accent-subtle: rgba(38, 139, 210, 0.14);
+  --surface-panel: rgba(7, 54, 66, 0.78);
+  --surface-panel-strong: rgba(7, 54, 66, 0.94);
+  --surface-elevated: rgba(0, 43, 54, 0.84);
+  --hero-gradient: linear-gradient(135deg, rgba(7, 54, 66, 0.95), rgba(0, 43, 54, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.34);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+
+[data-theme="ocean"] {
+  --bg-primary: #0b2545;
+  --bg-secondary: #13315c;
+  --bg-tertiary: #1c4775;
+  --app-background: linear-gradient(160deg, #0b2545 0%, #13315c 100%);
+  --text-primary: #e6f0ff;
+  --text-secondary: #9bb8d9;
+  --text-muted: #5d7da3;
+  --border-color: #1c4775;
+  --accent: #29b6f6;
+  --accent-hover: #4fc3f7;
+  --accent-subtle: rgba(41, 182, 246, 0.14);
+  --surface-panel: rgba(19, 49, 92, 0.78);
+  --surface-panel-strong: rgba(19, 49, 92, 0.94);
+  --surface-elevated: rgba(11, 37, 69, 0.84);
+  --hero-gradient: linear-gradient(135deg, rgba(19, 49, 92, 0.95), rgba(11, 37, 69, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.34);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+
+[data-theme="forest"] {
+  --bg-primary: #1f2a1f;
+  --bg-secondary: #2a382a;
+  --bg-tertiary: #354735;
+  --app-background: linear-gradient(160deg, #1f2a1f 0%, #2a382a 100%);
+  --text-primary: #e2efd9;
+  --text-secondary: #a8c39a;
+  --text-muted: #6d8a63;
+  --border-color: #3f5440;
+  --accent: #8fbf6e;
+  --accent-hover: #a4d083;
+  --accent-subtle: rgba(143, 191, 110, 0.14);
+  --surface-panel: rgba(42, 56, 42, 0.78);
+  --surface-panel-strong: rgba(42, 56, 42, 0.94);
+  --surface-elevated: rgba(31, 42, 31, 0.84);
+  --hero-gradient: linear-gradient(135deg, rgba(42, 56, 42, 0.95), rgba(31, 42, 31, 0.97));
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 3px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.55), 0 6px 12px rgba(0, 0, 0, 0.34);
+  --gradient-subtle: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  --gradient-accent: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  --key-shadow: inset 0 -2px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -3389,10 +3649,78 @@ button.danger:disabled {
 }
 
 /* ===== THEME PALETTE BUTTON ===== */
+.theme-palette-wrapper {
+  position: fixed;
+  top: 16px;
+  right: 208px;
+  z-index: 500;
+}
+
+.theme-palette-wrapper .theme-palette-btn {
+  position: static;
+  top: auto;
+  right: auto;
+}
+
+.theme-palette-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--surface-panel-strong);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: var(--shadow-lg), 3px 3px 0 rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  backdrop-filter: blur(6px);
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-family: "Courier Prime", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.theme-option:hover {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.theme-option.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.theme-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .theme-palette-btn {
   position: fixed;
   top: 16px;
-  right: 16px;
+  right: 208px;
   z-index: 500;
   width: 56px;
   height: 56px;
