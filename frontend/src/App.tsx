@@ -610,6 +610,23 @@ export default function App() {
     return formatDate(dateStr);
   };
 
+  const getDateGroupLabel = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return "Undated";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+    const startOfWeek = new Date(startOfToday.getTime() - (now.getDay() * 86400000));
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    if (date >= startOfToday) return "Today";
+    if (date >= startOfYesterday) return "Yesterday";
+    if (date >= startOfWeek) return "This Week";
+    if (date >= startOfMonth) return "This Month";
+
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  };
+
   const estimateReadingTime = (wordCount?: number): string => {
     if (!wordCount || wordCount === 0) return "";
     const wordsPerMinute = 200;
@@ -1337,9 +1354,21 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              conversations.map((conv) => (
+              (() => {
+                let lastGroup = "";
+                return conversations.map((conv) => {
+                  const group = getDateGroupLabel(conv.updated_at || conv.created_at);
+                  const showDivider = group !== lastGroup;
+                  lastGroup = group;
+                  return (
+                    <div key={conv.id}>
+                      {showDivider && (
+                        <div className="convo-date-group">
+                          <span className="convo-date-group-label">{group}</span>
+                          <span className="convo-date-group-line" />
+                        </div>
+                      )}
                 <div
-                  key={conv.id}
                   className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
                   role="button"
                   tabIndex={0}
@@ -1448,7 +1477,10 @@ export default function App() {
                     </div>
                   )}
                 </div>
-              ))
+                    </div>
+                  );
+                });
+              })()
             )}
           </div>
 
