@@ -3520,6 +3520,155 @@ button.danger:disabled {
   background: var(--bg-tertiary);
 }
 
+/* Multi-tag chip filter */
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tag-filter-chip {
+  padding: 4px 9px;
+  border-radius: 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.4;
+}
+
+.tag-filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.tag-filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tag-filter-chip .tag-count {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+/* Date range filter */
+.date-filter {
+  padding: 0;
+}
+
+.date-filter label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.date-filter-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.date-input:hover {
+  background: var(--bg-tertiary);
+}
+
+.date-separator {
+  color: var(--text-muted);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* Sort controls */
+.sort-filter {
+  padding: 0;
+}
+
+.sort-filter label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sort-filter-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.sort-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sort-select:hover {
+  background: var(--bg-tertiary);
+}
+
+.sort-order-btn {
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.sort-order-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.sort-order-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .manage-projects-btn {
   width: 100%;
   padding: 10px 14px;

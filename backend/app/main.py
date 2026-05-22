@@ -8,7 +8,7 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, List
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,18 +82,21 @@ def list_conversations(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     source: str | None = Query(None, description="Filter by source (chatgpt, claude, etc)"),
-    tag: str | None = Query(None, description="Filter by tag name"),
+    tag: str | None = Query(None, description="Filter by single tag name"),
+    tags: List[str] | None = Query(None, description="Filter by multiple tags (AND logic)"),
     project_id: int | None = Query(None, description="Filter by project ID (use -1 for uncategorized)"),
+    date_from: datetime | None = Query(None, description="Filter conversations created on or after this date"),
+    date_to: datetime | None = Query(None, description="Filter conversations created on or before this date"),
     sort_by: Literal["created_at", "updated_at", "title", "message_count"] = Query(
         "created_at", description="Field to sort by"
     ),
     sort_order: Literal["asc", "desc"] = Query("desc", description="Sort order"),
 ) -> ConversationListResponse:
     """List all conversations with pagination and filtering."""
-    
+
     query = db.query(Conversation).options(joinedload(Conversation.tags), joinedload(Conversation.project))
 
-    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
+    query = apply_conversation_filters(query, source=source, tag=tag, tags=tags, project_id=project_id, date_from=date_from, date_to=date_to)
 
     # Get total count
     total = query.count()
@@ -138,15 +141,18 @@ def search_conversations(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     source: str | None = Query(None, description="Filter by source"),
-    tag: str | None = Query(None, description="Filter by tag name"),
+    tag: str | None = Query(None, description="Filter by single tag name"),
+    tags: List[str] | None = Query(None, description="Filter by multiple tags (AND logic)"),
     project_id: int | None = Query(None, description="Filter by project ID (use -1 for uncategorized)"),
+    date_from: datetime | None = Query(None, description="Filter conversations created on or after this date"),
+    date_to: datetime | None = Query(None, description="Filter conversations created on or before this date"),
     search_messages: bool = Query(True, description="Also search message content"),
 ) -> ConversationListResponse:
     """Search conversations by title and message content using full-text search."""
     try:
-        return _search_conversations_fts(db, q, page, page_size, source, tag, project_id)
+        return _search_conversations_fts(db, q, page, page_size, source, tag, tags, project_id, date_from, date_to)
     except OperationalError:
-        return _search_conversations_ilike(db, q, page, page_size, source, tag, project_id, search_messages)
+        return _search_conversations_ilike(db, q, page, page_size, source, tag, tags, project_id, date_from, date_to, search_messages)
 
 
 def _search_conversations_fts(
@@ -156,7 +162,10 @@ def _search_conversations_fts(
     page_size: int,
     source: str | None,
     tag: str | None,
+    tags: list[str] | None,
     project_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
 ) -> ConversationListResponse:
     """Full-text search using PostgreSQL tsvector (requires migrate_add_fulltext_search)."""
     query = (
@@ -166,7 +175,7 @@ def _search_conversations_fts(
         .params(q=q)
     )
 
-    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
+    query = apply_conversation_filters(query, source=source, tag=tag, tags=tags, project_id=project_id, date_from=date_from, date_to=date_to)
 
     total = query.count()
     offset = (page - 1) * page_size
@@ -196,7 +205,10 @@ def _search_conversations_ilike(
     page_size: int,
     source: str | None,
     tag: str | None,
+    tags: list[str] | None,
     project_id: int | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
     search_messages: bool,
 ) -> ConversationListResponse:
     """Fallback ILIKE search when full-text search is not available."""
@@ -217,7 +229,7 @@ def _search_conversations_ilike(
         .filter(or_(*conditions))
     )
 
-    query = apply_conversation_filters(query, source=source, tag=tag, project_id=project_id)
+    query = apply_conversation_filters(query, source=source, tag=tag, tags=tags, project_id=project_id, date_from=date_from, date_to=date_to)
 
     total = query.count()
     offset = (page - 1) * page_size

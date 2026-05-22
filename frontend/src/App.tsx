@@ -175,6 +175,11 @@ export default function App() {
   const [totalPages, setTotalPages] = useState(0);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [sortBy, setSortBy] = useState<string>("created_at");
+  const [sortOrder, setSortOrder] = useState<string>("desc");
   const [showTagModal, setShowTagModal] = useState(false);
   const [autoTagging, setAutoTagging] = useState(false);
   const [allProjects, setAllProjects] = useState<ProjectType[]>([]);
@@ -310,7 +315,7 @@ export default function App() {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null) => {
+  const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null, activeTags?: string[], from?: string, to?: string, sbBy?: string, sbOrder?: string) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -323,9 +328,17 @@ export default function App() {
       if (tag) {
         params.append("tag", tag);
       }
+      const tagsToSend = activeTags ?? selectedTags;
+      tagsToSend.forEach(t => params.append("tags", t));
       if (projectId !== null && projectId !== undefined) {
         params.append("project_id", projectId.toString());
       }
+      const df = from ?? dateFrom;
+      const dt = to ?? dateTo;
+      if (df) params.append("date_from", df);
+      if (dt) params.append("date_to", dt);
+      params.append("sort_by", sbBy ?? sortBy);
+      params.append("sort_order", sbOrder ?? sortOrder);
       const response = await fetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
@@ -343,7 +356,10 @@ export default function App() {
     page = 1,
     source?: string,
     tag?: string | null,
-    projectId?: number | null
+    projectId?: number | null,
+    activeTags?: string[],
+    from?: string,
+    to?: string,
   ) => {
     try {
       setLoading(true);
@@ -359,9 +375,15 @@ export default function App() {
       if (tag) {
         params.append("tag", tag);
       }
+      const tagsToSend = activeTags ?? selectedTags;
+      tagsToSend.forEach(t => params.append("tags", t));
       if (projectId !== null && projectId !== undefined) {
         params.append("project_id", projectId.toString());
       }
+      const df = from ?? dateFrom;
+      const dt = to ?? dateTo;
+      if (df) params.append("date_from", df);
+      if (dt) params.append("date_to", dt);
       const response = await fetch(`${API_URL}/conversations/search?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
@@ -376,15 +398,20 @@ export default function App() {
     }
   };
 
-  const refreshConversationList = (page = currentPage, source?: string, tag?: string | null, projectId?: number | null) => {
+  const refreshConversationList = (page = currentPage, source?: string, tag?: string | null, projectId?: number | null, activeTags?: string[], from?: string, to?: string, sbBy?: string, sbOrder?: string) => {
     const nextSource = source ?? sourceFilter;
     const nextTag = tag ?? selectedTag;
     const nextProject = projectId !== undefined ? projectId : selectedProject;
+    const nextTags = activeTags ?? selectedTags;
+    const nextFrom = from !== undefined ? from : dateFrom;
+    const nextTo = to !== undefined ? to : dateTo;
+    const nextSortBy = sbBy ?? sortBy;
+    const nextSortOrder = sbOrder ?? sortOrder;
     if (searchQuery.trim()) {
-      loadSearchResults(searchQuery.trim(), page, nextSource, nextTag, nextProject);
+      loadSearchResults(searchQuery.trim(), page, nextSource, nextTag, nextProject, nextTags, nextFrom, nextTo);
       return;
     }
-    loadConversations(nextSource, page, nextTag, nextProject);
+    loadConversations(nextSource, page, nextTag, nextProject, nextTags, nextFrom, nextTo, nextSortBy, nextSortOrder);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -464,14 +491,47 @@ export default function App() {
     refreshConversationList(1, undefined, selectedTag, projectId);
   };
 
+  const handleMultiTagToggle = (tagName: string) => {
+    const next = selectedTags.includes(tagName)
+      ? selectedTags.filter(t => t !== tagName)
+      : [...selectedTags, tagName];
+    setSelectedTags(next);
+    setCurrentPage(1);
+    refreshConversationList(1, undefined, selectedTag, selectedProject, next);
+  };
+
+  const handleDateFrom = (value: string) => {
+    setDateFrom(value);
+    setCurrentPage(1);
+    refreshConversationList(1, undefined, selectedTag, selectedProject, selectedTags, value, dateTo);
+  };
+
+  const handleDateTo = (value: string) => {
+    setDateTo(value);
+    setCurrentPage(1);
+    refreshConversationList(1, undefined, selectedTag, selectedProject, selectedTags, dateFrom, value);
+  };
+
+  const handleSortChange = (newSortBy: string, newSortOrder: string) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+    refreshConversationList(1, undefined, selectedTag, selectedProject, selectedTags, dateFrom, dateTo, newSortBy, newSortOrder);
+  };
+
   const clearAllFilters = () => {
     setSearchQuery("");
     setSourceFilter("all");
     setSelectedTag(null);
+    setSelectedTags([]);
     setSelectedProject(null);
+    setDateFrom("");
+    setDateTo("");
+    setSortBy("created_at");
+    setSortOrder("desc");
     setCurrentPage(1);
     setIsSearching(false);
-    loadConversations("all", 1, null, null);
+    loadConversations("all", 1, null, null, [], "", "");
   };
 
   const checkSupabaseConfiguration = async () => {
@@ -1028,8 +1088,11 @@ export default function App() {
   const hasActiveFilters =
     sourceFilter !== "all" ||
     selectedTag !== null ||
+    selectedTags.length > 0 ||
     selectedProject !== null ||
-    Boolean(highlightQuery);
+    Boolean(highlightQuery) ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
   const selectedProjectLabel =
     selectedProject === null
       ? null
@@ -1039,8 +1102,11 @@ export default function App() {
   const activeFilters = [
     sourceFilter !== "all" ? getSourceInfo(sourceFilter).name : null,
     selectedTag ? `Tag: ${selectedTag}` : null,
+    ...(selectedTags.length > 0 ? selectedTags.map(t => `Tag: ${t}`) : []),
     selectedProjectLabel ? `Project: ${selectedProjectLabel}` : null,
     highlightQuery ? `Search: "${highlightQuery}"` : null,
+    dateFrom ? `From: ${dateFrom}` : null,
+    dateTo ? `To: ${dateTo}` : null,
   ].filter((value): value is string => Boolean(value));
 
   // Standalone mode: show only the conversation (opened in new window)
@@ -1207,19 +1273,19 @@ export default function App() {
                   </div>
 
                   <div className="tag-filter">
-                    <label htmlFor="tag-filter">Filter by tag:</label>
-                    <select
-                      id="tag-filter"
-                      value={selectedTag || "all"}
-                      onChange={(e) => handleTagFilter(e.target.value === "all" ? null : e.target.value)}
-                    >
-                      <option value="all">All Tags</option>
+                    <label>Filter by tag:</label>
+                    <div className="tag-filter-chips">
                       {allTags.map((tag) => (
-                        <option key={tag.id} value={tag.name}>
-                          {tag.name} ({tag.conversation_count})
-                        </option>
+                        <button
+                          key={tag.id}
+                          className={`tag-filter-chip${selectedTags.includes(tag.name) ? " active" : ""}`}
+                          onClick={() => handleMultiTagToggle(tag.name)}
+                          title={`${tag.conversation_count} conversations`}
+                        >
+                          {tag.name} <span className="tag-count">({tag.conversation_count})</span>
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
 
                   <div className="project-filter">
@@ -1246,6 +1312,50 @@ export default function App() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="date-filter">
+                    <label>Date range:</label>
+                    <div className="date-filter-inputs">
+                      <input
+                        type="date"
+                        className="date-input"
+                        value={dateFrom}
+                        onChange={(e) => handleDateFrom(e.target.value)}
+                        title="From date"
+                      />
+                      <span className="date-separator">–</span>
+                      <input
+                        type="date"
+                        className="date-input"
+                        value={dateTo}
+                        onChange={(e) => handleDateTo(e.target.value)}
+                        title="To date"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sort-filter">
+                    <label>Sort:</label>
+                    <div className="sort-filter-controls">
+                      <select
+                        value={sortBy}
+                        onChange={(e) => handleSortChange(e.target.value, sortOrder)}
+                        className="sort-select"
+                      >
+                        <option value="created_at">Date created</option>
+                        <option value="updated_at">Last updated</option>
+                        <option value="title">Title</option>
+                        <option value="message_count">Message count</option>
+                      </select>
+                      <button
+                        className={`sort-order-btn${sortOrder === "asc" ? " active" : ""}`}
+                        onClick={() => handleSortChange(sortBy, sortOrder === "desc" ? "asc" : "desc")}
+                        title={sortOrder === "desc" ? "Newest first — click to flip" : "Oldest first — click to flip"}
+                      >
+                        {sortOrder === "desc" ? "↓" : "↑"}
+                      </button>
+                    </div>
                   </div>
 
                   {allProjects.length > 0 && (
