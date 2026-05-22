@@ -54,8 +54,6 @@ See [Tagging Documentation](docs/TAGGING.md) for details on the classification a
 ### Next Steps
 
 - Enhance search capabilities with semantic search using embeddings
-- Implement export functionality (Markdown, PDF)
-- Add analytics dashboard for conversation insights
 - Create browser extension for auto-archiving
 
 ### Installation
@@ -287,7 +285,7 @@ Check our [Import Guide](docs/IMPORT_GUIDE.md) for detailed instructions on impo
 - [ ] Advanced filtering
 - [ ] Semantic search with embeddings
 - [ ] Conversation summaries
-- [ ] Export functionality
+- [x] Export functionality
 - [x] Analytics dashboard
 - [ ] Browser extension for auto-archiving
 - [ ] Multi-user support
