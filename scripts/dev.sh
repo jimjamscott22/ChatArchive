@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
+
 export NVM_DIR="${HOME}/.nvm"
 # shellcheck disable=SC1091
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
