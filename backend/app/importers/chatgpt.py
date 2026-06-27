@@ -27,26 +27,28 @@ def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any
         # Fallback: just iterate through all nodes
         root_id = list(mapping.keys())[0]
     
-    # Traverse the tree depth-first
-    def traverse(node_id: str, order: int) -> int:
-        node = mapping.get(node_id)
-        if not node:
-            return order
-        
-        message = node.get("message")
-        if message and should_include_message(message):
-            msg_data = parse_message(message, order)
-            if msg_data:
-                messages.append(msg_data)
-                order += 1
-        
-        # Follow children
-        for child_id in node.get("children", []):
-            order = traverse(child_id, order)
-        
-        return order
-    
-    traverse(root_id, 0)
+    def _traverse_iterative(node_id: str, mapping: dict) -> list:
+        messages = []
+        order = 0
+        # stack entries: node_id
+        stack = [node_id]
+        while stack:
+            current_id = stack.pop()
+            node = mapping.get(current_id)
+            if not node:
+                continue
+            message = node.get("message")
+            if message and should_include_message(message):
+                msg_data = parse_message(message, order)
+                if msg_data:
+                    messages.append(msg_data)
+                    order += 1
+            # push children in reverse order so first child is processed first
+            for child_id in reversed(node.get("children", [])):
+                stack.append(child_id)
+        return messages
+
+    messages = _traverse_iterative(root_id, mapping)
     return messages
 
 
@@ -121,7 +123,7 @@ def parse_message(message: dict[str, Any], order: int) -> dict[str, Any] | None:
         "source_id": message.get("id"),
         "role": role,
         "content": text_content,
-        "content_type": content_type if content_type == "text" else content_type,
+        "content_type": content_type,
         "created_at": created_at,
         "order_index": order,
         "model": model,

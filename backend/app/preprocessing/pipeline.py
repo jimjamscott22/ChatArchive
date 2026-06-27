@@ -189,7 +189,7 @@ async def process_export_async(
     Runs the CPU-bound processing in a thread pool executor so it
     doesn't block the event loop during large imports.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         None, process_export, payload, config, progress_callback
     )

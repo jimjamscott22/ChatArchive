@@ -58,6 +58,8 @@ from app.tagger import get_tagging_engine
 
 logger = logging.getLogger(__name__)
 
+MAX_IMPORT_BYTES = 100 * 1024 * 1024  # 100 MB
+
 app = FastAPI(title="ChatArchive API")
 
 app.add_middleware(
@@ -170,7 +172,7 @@ def _search_conversations_fts(
     """Full-text search using PostgreSQL tsvector (requires migrate_add_fulltext_search)."""
     query = (
         db.query(Conversation)
-        .options(joinedload(Conversation.tags))
+        .options(joinedload(Conversation.tags), joinedload(Conversation.project))
         .filter(text("conversations.search_vector @@ plainto_tsquery('english', :q)"))
         .params(q=q)
     )
@@ -225,7 +227,7 @@ def _search_conversations_ilike(
 
     query = (
         db.query(Conversation)
-        .options(joinedload(Conversation.tags))
+        .options(joinedload(Conversation.tags), joinedload(Conversation.project))
         .filter(or_(*conditions))
     )
 
@@ -688,8 +690,10 @@ async def import_chatgpt(
     if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
-    raw = await file.read()
-    
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
     # Upload raw export file to Supabase storage if configured
     if is_supabase_configured():
         try:
@@ -839,8 +843,10 @@ async def import_claude(
     if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
-    raw = await file.read()
-    
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
     # Upload raw export file to Supabase storage if configured
     if is_supabase_configured():
         try:
@@ -942,8 +948,10 @@ async def import_gemini(
     if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
-    raw = await file.read()
-    
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
     # Upload raw export file to Supabase storage if configured
     if is_supabase_configured():
         try:
@@ -1045,8 +1053,10 @@ async def import_copilot(
     if not filename or not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
-    raw = await file.read()
-    
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
     # Upload raw export file to Supabase storage if configured
     if is_supabase_configured():
         try:
@@ -1293,14 +1303,14 @@ def list_tags(
     db: Session = Depends(get_db),
 ) -> TagListResponse:
     """List all tags with their usage counts."""
-    # Get all tags with conversation count
-    tags = db.query(Tag).all()
-    
-    # Calculate conversation count for each tag
-    tag_responses = []
-    for tag in tags:
-        count = db.query(ConversationTag).filter(ConversationTag.tag_id == tag.id).count()
-        tag_response = TagResponse(
+    tags_with_counts = (
+        db.query(Tag, func.count(ConversationTag.tag_id).label("conversation_count"))
+        .outerjoin(ConversationTag, ConversationTag.tag_id == Tag.id)
+        .group_by(Tag.id)
+        .all()
+    )
+    tag_responses = [
+        TagResponse(
             id=tag.id,
             name=tag.name,
             description=tag.description,
@@ -1308,8 +1318,8 @@ def list_tags(
             created_at=tag.created_at,
             conversation_count=count,
         )
-        tag_responses.append(tag_response)
-    
+        for tag, count in tags_with_counts
+    ]
     return TagListResponse(items=tag_responses, total=len(tag_responses))
 
 
@@ -1526,6 +1536,9 @@ def auto_tag_conversations(
     if not conversations:
         raise HTTPException(status_code=404, detail="No conversations found")
     
+    # Cache all tags by name to avoid repeated per-tag DB lookups inside the loop
+    all_tags = {t.name: t for t in db.query(Tag).all()}
+
     # Auto-tag each conversation
     tagged_count = 0
     tagged_ids = []
@@ -1563,7 +1576,7 @@ def auto_tag_conversations(
         # Add new tags
         tags_added_to_conv = False
         for tag_name in tag_names:
-            tag = db.query(Tag).filter(Tag.name == tag_name).first()
+            tag = all_tags.get(tag_name)
             if not tag:
                 continue
             
