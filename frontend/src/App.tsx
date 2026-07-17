@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
@@ -133,6 +133,11 @@ type AnalyticsData = {
   activity_by_day: Record<string, number>;
   top_tags: { name: string; color: string; count: number }[];
   projects: { name: string; color: string; count: number }[];
+  activity_heatmap: number[][];
+  peak_window: string | null;
+  longest_thread: { title: string; message_count: number } | null;
+  response_length_trend: { month: string; avg_words: number }[];
+  conversation_depth_buckets: { range: string; count: number }[];
 };
 
 type DuplicatesData = {
@@ -158,7 +163,8 @@ export default function App() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
-  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [analyticsView, setAnalyticsView] = useState(false);
+  const [analyticsRange, setAnalyticsRange] = useState<"30d" | "all">("all");
   const [theme, setTheme] = useState<ThemeId>(() => {
     try {
       const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
@@ -257,7 +263,7 @@ export default function App() {
         setShowImportModal(false);
         setShowSettingsModal(false);
         setShowDuplicatesModal(false);
-        setShowAnalyticsModal(false);
+        setAnalyticsView(false);
         setShowTagModal(false);
         setShowProjectModal(false);
         setShowMoveToProjectModal(false);
@@ -1209,6 +1215,14 @@ export default function App() {
         <div className="sidebar-scroll-area">
           {!sidebarCollapsed && (
             <div className="sidebar-top">
+              <button
+                className={`sidebar-home-btn${!analyticsView && !selectedConversation ? " active" : ""}`}
+                onClick={() => { setAnalyticsView(false); setSelectedConversation(null); }}
+              >
+                <Home size={14} />
+                Home
+              </button>
+
               <div className="search-box">
                 <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
                 <Search size={16} className="search-icon" />
@@ -1437,7 +1451,10 @@ export default function App() {
                 </div>
 
                 <div className="sidebar-tool-grid">
-                  <button className="sidebar-tool-btn" onClick={() => setShowAnalyticsModal(true)}>
+                  <button
+                    className={`sidebar-tool-btn${analyticsView ? " active" : ""}`}
+                    onClick={() => { setAnalyticsView(true); setSelectedConversation(null); }}
+                  >
                     <BarChart2 size={16} />
                     Analytics
                   </button>
@@ -1687,22 +1704,45 @@ export default function App() {
 
             <div className="main-header-text">
               <p className="header-kicker">
-                {selectedConversation
-                  ? getSourceInfo(selectedConversation.source).name
-                  : highlightQuery
-                    ? "Search results"
-                    : "Archive overview"}
+                {analyticsView
+                  ? "Archive Analytics"
+                  : selectedConversation
+                    ? getSourceInfo(selectedConversation.source).name
+                    : highlightQuery
+                      ? "Search results"
+                      : "Archive overview"}
               </p>
               <h2 className="header-title">
-                {selectedConversation?.title || "Browse and organize your conversations"}
+                {analyticsView
+                  ? "What your archive tells you"
+                  : selectedConversation?.title || "Browse and organize your conversations"}
               </h2>
-              {!selectedConversation && (
+              {!selectedConversation && !analyticsView && (
                 <p className="header-subtitle">
                   Use the sidebar to filter the archive, then pick a conversation to preview here or open it in a
                   dedicated window.
                 </p>
               )}
             </div>
+
+            {analyticsView && (
+              <div className="header-actions">
+                <div className="analytics-range-toggle">
+                  <button
+                    className={analyticsRange === "30d" ? "active" : ""}
+                    onClick={() => setAnalyticsRange("30d")}
+                  >
+                    30d
+                  </button>
+                  <button
+                    className={analyticsRange === "all" ? "active" : ""}
+                    onClick={() => setAnalyticsRange("all")}
+                  >
+                    All time
+                  </button>
+                </div>
+              </div>
+            )}
 
             {selectedConversation && (
               <div className="header-actions">
@@ -1823,7 +1863,9 @@ export default function App() {
         </header>
 
         <div className="content-area content-area-scrollable">
-          {!selectedConversation ? (
+          {analyticsView ? (
+            <AnalyticsScreen range={analyticsRange} />
+          ) : !selectedConversation ? (
             <div className="overview-layout">
               <section className="overview-hero">
                 <div className="overview-hero-copy">
@@ -1868,7 +1910,7 @@ export default function App() {
                     </button>
                   )}
                   {!hasActiveFilters && conversations.length > 0 && (
-                    <button className="overview-secondary-btn" onClick={() => setShowAnalyticsModal(true)}>
+                    <button className="overview-secondary-btn" onClick={() => setAnalyticsView(true)}>
                       Review analytics
                     </button>
                   )}
@@ -2101,7 +2143,7 @@ export default function App() {
                         <div>
                           <span className="overview-section-label">Quick actions</span>
                           <div className="overview-action-grid">
-                            <button type="button" className="overview-secondary-btn" onClick={() => setShowAnalyticsModal(true)}>
+                            <button type="button" className="overview-secondary-btn" onClick={() => setAnalyticsView(true)}>
                               Open analytics
                             </button>
                             <button type="button" className="overview-secondary-btn" onClick={() => setShowTagModal(true)}>
@@ -2196,10 +2238,6 @@ export default function App() {
           onClose={() => setShowMoveToProjectModal(false)}
           onMove={moveConversationToProject}
         />
-      )}
-
-      {showAnalyticsModal && (
-        <AnalyticsDashboard onClose={() => setShowAnalyticsModal(false)} />
       )}
 
       {showShortcutsModal && (
@@ -3375,259 +3413,226 @@ function ProjectManagerModal({
   );
 }
 
-function AnalyticsDashboard({ onClose }: { onClose: () => void }) {
+function AnalyticsScreen({ range }: { range: "30d" | "all" }) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/analytics`)
+    setLoading(true);
+    setError(null);
+    const qs = range === "30d" ? "?days=30" : "";
+    fetch(`${API_URL}/analytics${qs}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((d) => { setData(d); setLoading(false); })
       .catch((e) => { setError(e.message); setLoading(false); });
-  }, []);
+  }, [range]);
 
   const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const HOUR_LABELS = ["12a", "6a", "12p", "6p", "11p"];
 
   const SOURCE_COLORS: Record<string, string> = {
-    chatgpt: "#10B981",
-    claude: "#F59E0B",
-    gemini: "#3B82F6",
-    copilot: "#8B5CF6",
+    chatgpt: "var(--chatgpt-color, #10a37f)",
+    claude: "var(--claude-color, #d97757)",
+    gemini: "var(--gemini-color, #4285f4)",
+    copilot: "var(--copilot-color, #8957e5)",
   };
 
-  const ROLE_COLORS: Record<string, string> = {
-    user: "#3B82F6",
-    assistant: "#10B981",
-    system: "#F59E0B",
-    tool: "#EC4899",
+  const SOURCE_NAMES: Record<string, string> = {
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    gemini: "Gemini",
+    copilot: "Copilot",
   };
 
-  function HorizontalBar({ label, value, max, color, count }: {
-    label: string; value: number; max: number; color: string; count: number;
-  }) {
-    const pct = max > 0 ? (value / max) * 100 : 0;
+  const sourceName = (src: string) => SOURCE_NAMES[src] || (src.charAt(0).toUpperCase() + src.slice(1));
+
+  function InsightCard({ label, value, subtitle }: { label: string; value: string; subtitle: string }) {
     return (
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-          <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{label}</span>
-          <span style={{ color: "var(--text-secondary)" }}>{count.toLocaleString()}</span>
-        </div>
-        <div style={{ height: 8, background: "var(--bg-tertiary)", borderRadius: 4, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.4s ease" }} />
+      <div className="analytics-insight-card">
+        <span className="analytics-insight-label">{label}</span>
+        <strong className="analytics-insight-value">{value}</strong>
+        <span className="analytics-insight-subtitle">{subtitle}</span>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="analytics-screen"><div className="analytics-state">Loading analytics…</div></div>;
+  }
+  if (error) {
+    return <div className="analytics-screen"><div className="status-error">Failed to load analytics: {error}</div></div>;
+  }
+  if (!data) return null;
+
+  if (data.total_conversations === 0) {
+    return (
+      <div className="analytics-screen">
+        <div className="analytics-empty-state">
+          <h3>No analytics yet</h3>
+          <p>{range === "30d" ? "Nothing imported in the last 30 days." : "Import some conversations to see insights about your archive."}</p>
         </div>
       </div>
     );
   }
 
-  function TimelineChart({ months }: { months: { month: string; count: number }[] }) {
-    if (months.length === 0) return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data yet.</p>;
-    const maxCount = Math.max(...months.map((m) => m.count), 1);
-    const chartH = 120;
-    const barW = Math.max(16, Math.min(40, Math.floor(560 / months.length) - 4));
-    const gap = 4;
-    const totalW = months.length * (barW + gap);
+  const sourceEntries = Object.entries(data.sources).sort((a, b) => b[1] - a[1]);
+  const [topSourceName, topSourceCount] = sourceEntries[0] ?? ["—", 0];
+  const runnerUp = sourceEntries[1];
+  const sourceRatioLabel = runnerUp && runnerUp[1] > 0
+    ? `${(topSourceCount / runnerUp[1]).toFixed(1)}× vs ${sourceName(runnerUp[0])}`
+    : sourceEntries.length > 0
+      ? "only source used"
+      : "—";
 
-    return (
-      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
-        <svg width={Math.max(totalW, 200)} height={chartH + 36} style={{ display: "block" }}>
-          {months.map((m, i) => {
-            const barH = Math.max(2, (m.count / maxCount) * chartH);
-            const x = i * (barW + gap);
-            const labelYear = m.month.slice(0, 4);
-            const labelMon = m.month.slice(5, 7);
-            const isJan = labelMon === "01";
-            return (
-              <g key={m.month}>
-                <rect
-                  x={x}
-                  y={chartH - barH}
-                  width={barW}
-                  height={barH}
-                  fill="#3B82F6"
-                  rx={3}
-                  opacity={0.85}
-                >
-                  <title>{m.month}: {m.count}</title>
-                </rect>
-                {(isJan || months.length <= 18) && (
-                  <text
-                    x={x + barW / 2}
-                    y={chartH + 16}
-                    textAnchor="middle"
-                    fontSize={9}
-                    fill="var(--text-muted)"
-                  >
-                    {isJan ? labelYear : labelMon}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    );
-  }
+  const topTag = data.top_tags[0];
+  const tagShare = topTag && data.total_conversations > 0
+    ? `${Math.round((topTag.count / data.total_conversations) * 100)}% of conversations`
+    : "—";
 
-  function DayChart({ activityByDay }: { activityByDay: Record<string, number> }) {
-    const values = DAY_NAMES.map((_, i) => activityByDay[String(i)] || 0);
-    const max = Math.max(...values, 1);
-    const chartH = 80;
-    const barW = 32;
-    const gap = 6;
+  const heatmapMax = Math.max(1, ...data.activity_heatmap.flat());
+  const trendWords = data.response_length_trend.map((t) => t.avg_words);
+  const trendMax = Math.max(1, ...trendWords);
+  const trendDirection = trendWords.length >= 2
+    ? trendWords[trendWords.length - 1] >= trendWords[0] ? "trending up" : "trending down"
+    : "";
 
-    return (
-      <svg width={DAY_NAMES.length * (barW + gap)} height={chartH + 28} style={{ display: "block" }}>
-        {DAY_NAMES.map((name, i) => {
-          const barH = Math.max(2, (values[i] / max) * chartH);
-          const x = i * (barW + gap);
-          return (
-            <g key={name}>
-              <rect x={x} y={chartH - barH} width={barW} height={barH} fill="#8B5CF6" rx={3} opacity={0.85}>
-                <title>{name}: {values[i]}</title>
-              </rect>
-              <text x={x + barW / 2} y={chartH + 16} textAnchor="middle" fontSize={10} fill="var(--text-muted)">
-                {name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  }
+  const depthMax = Math.max(1, ...data.conversation_depth_buckets.map((b) => b.count));
+  const busiestBucket = data.conversation_depth_buckets.reduce(
+    (best, b) => (b.count > best.count ? b : best),
+    data.conversation_depth_buckets[0]
+  );
 
   return (
-    <ModalShell title="Conversation Analytics" onClose={onClose} className="analytics-modal">
-      {loading && (
-        <div className="analytics-state">Loading analytics…</div>
-      )}
+    <div className="analytics-screen">
+      <div className="analytics-insight-row">
+        <InsightCard label="most used for" value={topTag?.name ?? "—"} subtitle={tagShare} />
+        <InsightCard
+          label="go-to model"
+          value={topSourceName === "—" ? "—" : sourceName(topSourceName)}
+          subtitle={sourceRatioLabel}
+        />
+        <InsightCard
+          label="longest thread"
+          value={data.longest_thread?.title ?? "—"}
+          subtitle={data.longest_thread ? `${data.longest_thread.message_count} messages` : "—"}
+        />
+        <InsightCard label="peak window" value={data.peak_window ?? "—"} subtitle="your busiest slot" />
+      </div>
 
-      {error && (
-        <div className="status-error">Failed to load analytics: {error}</div>
-      )}
-
-      {data && (
-        <div className="analytics-layout">
-          <div className="analytics-card-row">
-            <div className="analytics-card analytics-card-blue">
-              <div className="analytics-card-value">
-                {data.total_conversations.toLocaleString()}
-              </div>
-              <div className="analytics-card-label">Total Conversations</div>
+      <div className="analytics-two-col">
+        <section className="analytics-panel">
+          <div className="analytics-panel-title">Activity heatmap — day &times; hour</div>
+          <div className="analytics-heatmap">
+            <div className="analytics-heatmap-day-labels">
+              {DAY_NAMES.map((d) => <span key={d}>{d}</span>)}
             </div>
-            <div className="analytics-card analytics-card-green">
-              <div className="analytics-card-value">
-                {data.total_messages.toLocaleString()}
-              </div>
-              <div className="analytics-card-label">Total Messages</div>
-            </div>
-            <div className="analytics-card analytics-card-amber">
-              <div className="analytics-card-value">
-                {data.avg_messages_per_conversation.toFixed(1)}
-              </div>
-              <div className="analytics-card-label">Avg Messages / Conv.</div>
-            </div>
-          </div>
-
-          <section className="analytics-section">
-            <div className="analytics-section-title">Conversations Over Time</div>
-            <TimelineChart months={data.conversations_by_month} />
-          </section>
-
-          <div className="analytics-two-column">
-            <section className="analytics-section">
-              <div className="analytics-section-title">By Source</div>
-              {Object.keys(data.sources).length === 0 ? (
-                <p className="analytics-empty">No data.</p>
-              ) : (() => {
-                const maxSrc = Math.max(...Object.values(data.sources));
-                return Object.entries(data.sources)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([src, cnt]) => (
-                    <HorizontalBar
-                      key={src}
-                      label={src.charAt(0).toUpperCase() + src.slice(1)}
-                      value={cnt}
-                      max={maxSrc}
-                      color={SOURCE_COLORS[src] || "#6B7280"}
-                      count={cnt}
-                    />
-                  ));
-              })()}
-            </section>
-
-            <section className="analytics-section">
-              <div className="analytics-section-title">Messages by Role</div>
-              {Object.keys(data.role_distribution).length === 0 ? (
-                <p className="analytics-empty">No data.</p>
-              ) : (() => {
-                const maxRole = Math.max(...Object.values(data.role_distribution));
-                return Object.entries(data.role_distribution)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([role, cnt]) => (
-                    <HorizontalBar
-                      key={role}
-                      label={role.charAt(0).toUpperCase() + role.slice(1)}
-                      value={cnt}
-                      max={maxRole}
-                      color={ROLE_COLORS[role] || "#6B7280"}
-                      count={cnt}
-                    />
-                  ));
-              })()}
-            </section>
-          </div>
-
-          <div className="analytics-two-column">
-            <section className="analytics-section">
-              <div className="analytics-section-title">Activity by Day of Week</div>
-              <DayChart activityByDay={data.activity_by_day} />
-            </section>
-
-            {data.top_tags.length > 0 && (
-              <section className="analytics-section">
-                <div className="analytics-section-title">Top Tags</div>
-                {(() => {
-                  const maxTag = Math.max(...data.top_tags.map((t) => t.count));
-                  return data.top_tags.map((tag) => (
-                    <HorizontalBar
-                      key={tag.name}
-                      label={tag.name}
-                      value={tag.count}
-                      max={maxTag}
-                      color={tag.color}
-                      count={tag.count}
-                    />
-                  ));
-                })()}
-              </section>
-            )}
-          </div>
-
-          {data.projects.length > 0 && (
-            <section className="analytics-section">
-              <div className="analytics-section-title">Conversations by Project</div>
-              {(() => {
-                const maxProj = Math.max(...data.projects.map((p) => p.count));
-                return data.projects.map((proj) => (
-                  <HorizontalBar
-                    key={proj.name}
-                    label={proj.name}
-                    value={proj.count}
-                    max={maxProj}
-                    color={proj.color}
-                    count={proj.count}
+            <div className="analytics-heatmap-grid">
+              {data.activity_heatmap.map((row, dayIdx) =>
+                row.map((count, bucketIdx) => (
+                  <div
+                    key={`${dayIdx}-${bucketIdx}`}
+                    className="analytics-heatmap-cell"
+                    style={{ opacity: count === 0 ? 0.06 : 0.18 + (count / heatmapMax) * 0.82 }}
+                    title={`${DAY_NAMES[dayIdx]} ${bucketIdx * 2}:00–${bucketIdx * 2 + 1}:59 — ${count} messages`}
                   />
-                ));
-              })()}
-            </section>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="analytics-heatmap-hour-labels">
+            {HOUR_LABELS.map((h) => <span key={h}>{h}</span>)}
+          </div>
+        </section>
+
+        <section className="analytics-panel">
+          <div className="analytics-panel-title">Source mix</div>
+          <div className="analytics-source-mix">
+            {sourceEntries.map(([src, count]) => {
+              const pct = data.total_conversations > 0 ? Math.round((count / data.total_conversations) * 100) : 0;
+              return (
+                <div key={src} className="analytics-source-row">
+                  <div className="analytics-source-row-label">
+                    <span>{sourceName(src)}</span>
+                    <b>{count}</b>
+                  </div>
+                  <div className="analytics-source-bar-track">
+                    <div
+                      className="analytics-source-bar-fill"
+                      style={{ width: `${pct}%`, background: SOURCE_COLORS[src] || "var(--accent)" }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {data.top_tags.length > 0 && (
+            <>
+              <div className="analytics-panel-title analytics-panel-title-spaced">Top topics</div>
+              <div className="analytics-tag-pills">
+                {data.top_tags.slice(0, 6).map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="analytics-tag-pill"
+                    style={{ borderColor: tag.color, color: tag.color }}
+                  >
+                    {tag.name} {tag.count}
+                  </span>
+                ))}
+              </div>
+            </>
           )}
-        </div>
-      )}
-    </ModalShell>
+        </section>
+      </div>
+
+      <div className="analytics-two-col">
+        <section className="analytics-panel">
+          <div className="analytics-panel-title">Response length trend</div>
+          {data.response_length_trend.length === 0 ? (
+            <p className="analytics-empty">Not enough data yet.</p>
+          ) : (
+            <>
+              <div className="analytics-trend-bars">
+                {data.response_length_trend.map((t) => (
+                  <div
+                    key={t.month}
+                    className="analytics-trend-bar"
+                    style={{ height: `${Math.max(6, (t.avg_words / trendMax) * 100)}%` }}
+                    title={`${t.month}: ~${t.avg_words} words / reply`}
+                  />
+                ))}
+              </div>
+              <p className="analytics-panel-caption">
+                avg {trendWords[trendWords.length - 1] ?? 0} words / reply{trendDirection ? `, ${trendDirection}` : ""}
+              </p>
+            </>
+          )}
+        </section>
+
+        <section className="analytics-panel">
+          <div className="analytics-panel-title">Conversation depth</div>
+          <div className="analytics-depth-headline">
+            <strong>{data.avg_messages_per_conversation.toFixed(1)}</strong>
+            <span>msgs / convo</span>
+          </div>
+          <div className="analytics-depth-bars">
+            {data.conversation_depth_buckets.map((b) => (
+              <div
+                key={b.range}
+                className={`analytics-depth-bar${b === busiestBucket ? " analytics-depth-bar-peak" : ""}`}
+                style={{ height: `${Math.max(6, (b.count / depthMax) * 100)}%` }}
+                title={`${b.range} messages: ${b.count} conversations`}
+              />
+            ))}
+          </div>
+          <p className="analytics-panel-caption">most threads run {busiestBucket?.range ?? "—"} messages</p>
+        </section>
+      </div>
+    </div>
   );
 }
 

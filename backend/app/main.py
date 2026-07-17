@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, List
 
@@ -590,17 +590,32 @@ def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @app.get("/analytics")
-def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_analytics(
+    db: Session = Depends(get_db),
+    days: int | None = Query(None, gt=0, description="Restrict to the last N days; omit for all-time"),
+) -> dict[str, Any]:
     """Get detailed analytics data for the conversation insights dashboard."""
 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    conv_cutoff_filters = [Conversation.created_at >= cutoff] if cutoff else []
+    msg_cutoff_filters = [Message.created_at >= cutoff] if cutoff else []
+
     # Totals
-    total_conversations = db.query(Conversation).count()
-    total_messages = db.query(Message).count()
-    avg_msgs = db.query(func.avg(Conversation.message_count)).scalar() or 0
+    total_conversations = db.query(Conversation).filter(*conv_cutoff_filters).count()
+    total_messages = (
+        db.query(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(*conv_cutoff_filters)
+        .count()
+    )
+    avg_msgs = (
+        db.query(func.avg(Conversation.message_count)).filter(*conv_cutoff_filters).scalar() or 0
+    )
 
     # Source breakdown
     source_counts = (
         db.query(Conversation.source, func.count(Conversation.id))
+        .filter(*conv_cutoff_filters)
         .group_by(Conversation.source)
         .all()
     )
@@ -610,7 +625,7 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
 
     conversations_by_month = (
         db.query(month_expr.label("month"), func.count(Conversation.id).label("count"))
-        .filter(Conversation.created_at.isnot(None))
+        .filter(Conversation.created_at.isnot(None), *conv_cutoff_filters)
         .group_by(month_expr)
         .order_by(month_expr)
         .all()
@@ -621,14 +636,96 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
 
     activity_by_day_raw = (
         db.query(day_expr.label("day"), func.count(Conversation.id).label("count"))
-        .filter(Conversation.created_at.isnot(None))
+        .filter(Conversation.created_at.isnot(None), *conv_cutoff_filters)
         .group_by(day_expr)
         .all()
     )
 
+    # Activity heatmap: day of week x 2-hour bucket, from message timestamps
+    msg_day_expr = func.extract("dow", Message.created_at)
+    msg_hour_expr = func.extract("hour", Message.created_at)
+
+    heatmap_raw = (
+        db.query(
+            msg_day_expr.label("day"),
+            msg_hour_expr.label("hour"),
+            func.count(Message.id).label("count"),
+        )
+        .filter(Message.created_at.isnot(None), *msg_cutoff_filters)
+        .group_by(msg_day_expr, msg_hour_expr)
+        .all()
+    )
+
+    heatmap_grid = [[0] * 12 for _ in range(7)]  # [day][2-hour bucket]
+    for day, hour, count in heatmap_raw:
+        if day is None or hour is None:
+            continue
+        heatmap_grid[int(float(day))][int(float(hour)) // 2] += count
+
+    peak_day_idx, peak_bucket_idx = 0, 0
+    peak_count = -1
+    for d in range(7):
+        for b in range(12):
+            if heatmap_grid[d][b] > peak_count:
+                peak_count = heatmap_grid[d][b]
+                peak_day_idx, peak_bucket_idx = d, b
+
+    DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    def _hour_label(hour: int) -> str:
+        period = "am" if hour < 12 else "pm"
+        display_hour = hour % 12
+        if display_hour == 0:
+            display_hour = 12
+        return f"{display_hour}{period}"
+
+    peak_window = (
+        f"{DAY_NAMES[peak_day_idx]} {_hour_label(peak_bucket_idx * 2)}"
+        if peak_count > 0
+        else None
+    )
+
+    # Longest thread
+    longest = (
+        db.query(Conversation.title, Conversation.message_count)
+        .filter(*conv_cutoff_filters)
+        .order_by(Conversation.message_count.desc())
+        .first()
+    )
+
+    # Response length trend: avg assistant message length (chars, ~/5 = words) by month
+    resp_month_expr = func.to_char(Message.created_at, "YYYY-MM")
+    response_length_raw = (
+        db.query(
+            resp_month_expr.label("month"),
+            func.avg(func.length(Message.content)).label("avg_len"),
+        )
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(Message.role == "assistant", Message.created_at.isnot(None), *conv_cutoff_filters)
+        .group_by(resp_month_expr)
+        .order_by(resp_month_expr)
+        .all()
+    )
+    response_length_trend = [
+        {"month": month, "avg_words": round(float(avg_len or 0) / 5)}
+        for month, avg_len in response_length_raw
+        if month is not None
+    ][-6:]
+
+    # Conversation depth distribution buckets
+    depth_buckets_def = [(1, 5), (6, 10), (11, 15), (16, 25), (26, None)]
+    depth_counts = [0] * len(depth_buckets_def)
+    for (count,) in db.query(Conversation.message_count).filter(*conv_cutoff_filters).all():
+        for i, (lo, hi) in enumerate(depth_buckets_def):
+            if count >= lo and (hi is None or count <= hi):
+                depth_counts[i] += 1
+                break
+
     # Message role distribution
     role_distribution = (
         db.query(Message.role, func.count(Message.id))
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(*conv_cutoff_filters)
         .group_by(Message.role)
         .all()
     )
@@ -637,6 +734,8 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
     top_tags = (
         db.query(Tag.name, Tag.color, func.count(ConversationTag.conversation_id).label("count"))
         .join(ConversationTag, Tag.id == ConversationTag.tag_id)
+        .join(Conversation, Conversation.id == ConversationTag.conversation_id)
+        .filter(*conv_cutoff_filters)
         .group_by(Tag.id, Tag.name, Tag.color)
         .order_by(func.count(ConversationTag.conversation_id).desc())
         .limit(10)
@@ -647,6 +746,7 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
     project_stats = (
         db.query(Project.name, Project.color, func.count(Conversation.id).label("count"))
         .join(Conversation, Conversation.project_id == Project.id)
+        .filter(*conv_cutoff_filters)
         .group_by(Project.id, Project.name, Project.color)
         .order_by(func.count(Conversation.id).desc())
         .all()
@@ -677,6 +777,18 @@ def get_analytics(db: Session = Depends(get_db)) -> dict[str, Any]:
         "projects": [
             {"name": name, "color": color or "#8B5CF6", "count": count}
             for name, color, count in project_stats
+        ],
+        "activity_heatmap": heatmap_grid,
+        "peak_window": peak_window,
+        "longest_thread": (
+            {"title": longest[0] or "Untitled", "message_count": longest[1]}
+            if longest
+            else None
+        ),
+        "response_length_trend": response_length_trend,
+        "conversation_depth_buckets": [
+            {"range": f"{lo}-{hi}" if hi else f"{lo}+", "count": depth_counts[i]}
+            for i, (lo, hi) in enumerate(depth_buckets_def)
         ],
     }
 
