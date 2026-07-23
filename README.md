@@ -2,7 +2,7 @@
 
 ## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
 
-![ChatArchive Preview](ChatArchiveNLM_Infographic.png)
+![ChatArchive Infographic](ChatArchiveNLM_Infographic.png)
 
 ## 🌟 Features
 
@@ -16,6 +16,8 @@
 - **Export Options**: Export conversations to Markdown, JSON, or PDF
 - **Advanced Analytics**: Visualize your conversation patterns and topics
 - **Code Highlighting**: Automatic syntax highlighting for code snippets
+
+![ChatArchive UI Preview](ChatArchive-Scrnsht.png)
 
 ## 🚀 Quick Start
 
