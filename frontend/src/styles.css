@@ -3242,34 +3242,12 @@ button.danger:disabled {
   padding: 0;
 }
 
-.tag-filter label {
+.tag-filter .filter-label {
   display: block;
   color: var(--text-secondary);
   font-size: 13px;
   margin-bottom: 6px;
   font-weight: 500;
-}
-
-.tag-filter select {
-  width: 100%;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.tag-filter select:hover {
-  border-color: var(--accent);
-}
-
-.tag-filter select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
 }
 
 .manage-tags-btn {
@@ -4475,7 +4453,6 @@ button.danger:disabled {
 .modal button:focus-visible,
 .search-box input:focus-visible,
 .source-filter select:focus-visible,
-.tag-filter select:focus-visible,
 .project-filter select:focus-visible,
 .strategy-selector select:focus-visible,
 .form-group input:focus-visible,

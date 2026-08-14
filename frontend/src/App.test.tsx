@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -157,9 +157,14 @@ describe("App UI improvements", () => {
     const fetchMock = installFetchMock();
     render(<App />);
 
-    fireEvent.change(await screen.findByLabelText(/filter by tag/i), {
-      target: { value: "coding" },
-    });
+    // Tag filtering is a group of toggle chips (not a <select>) — click to select.
+    const tagGroup = await screen.findByRole("group", { name: /filter by tag/i });
+    const codingChip = within(tagGroup).getByRole("button", { name: /coding/i });
+    expect(codingChip).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(codingChip);
+    expect(codingChip).toHaveAttribute("aria-pressed", "true");
+
     fireEvent.change(screen.getByLabelText(/filter by project/i), {
       target: { value: "1" },
     });
@@ -173,7 +178,8 @@ describe("App UI improvements", () => {
         .find((url) => url.includes("/conversations/search?") && url.includes("q=refactor"));
 
       expect(searchRequest).toBeDefined();
-      expect(searchRequest).toContain("tag=coding");
+      // Multi-tag filtering appends a repeatable `tags` param, not singular `tag`.
+      expect(searchRequest).toContain("tags=coding");
       expect(searchRequest).toContain("project_id=1");
     });
   });

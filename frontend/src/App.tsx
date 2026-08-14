@@ -1287,13 +1287,18 @@ export default function App() {
                   </div>
 
                   <div className="tag-filter">
-                    <label>Filter by tag:</label>
-                    <div className="tag-filter-chips">
+                    <span className="filter-label" id="tag-filter-label">Filter by tag:</span>
+                    <div
+                      className="tag-filter-chips"
+                      role="group"
+                      aria-labelledby="tag-filter-label"
+                    >
                       {allTags.map((tag) => (
                         <button
                           key={tag.id}
                           className={`tag-filter-chip${selectedTags.includes(tag.name) ? " active" : ""}`}
                           onClick={() => handleMultiTagToggle(tag.name)}
+                          aria-pressed={selectedTags.includes(tag.name)}
                           title={`${tag.conversation_count} conversations`}
                         >
                           {tag.name} <span className="tag-count">({tag.conversation_count})</span>
