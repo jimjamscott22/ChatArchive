@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>ChatArchive Security Review — Remaining Findings</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f0f4f8;
+      --text: #172033;
+      --muted: #586579;
+      --border: #d8e0ea;
+      --accent: #3157d5;
+      --accent-soft: #e9eeff;
+      --high: #b42318;
+      --high-soft: #feeceb;
+      --medium: #9a6700;
+      --medium-soft: #fff4d6;
+      --ok: #067647;
+      --ok-soft: #e6f7ef;
+      --shadow: 0 16px 42px rgba(23, 32, 51, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #10141c;
+        --surface: #181e29;
+        --surface-soft: #202735;
+        --text: #edf1f7;
+        --muted: #aeb8c8;
+        --border: #364052;
+        --accent: #9ab0ff;
+        --accent-soft: #25315b;
+        --high: #ffaaa4;
+        --high-soft: #4a2426;
+        --medium: #ffd174;
+        --medium-soft: #44371f;
+        --ok: #75d6a8;
+        --ok-soft: #183d30;
+        --shadow: none;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    a { color: var(--accent); }
+    a:hover { text-decoration-thickness: 2px; }
+
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    code {
+      padding: 0.12rem 0.35rem;
+      border: 1px solid var(--border);
+      border-radius: 0.35rem;
+      background: var(--surface-soft);
+      font-size: 0.9em;
+    }
+
+    pre {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      background: var(--surface-soft);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 3rem 0 5rem;
+    }
+
+    .hero,
+    .panel,
+    .finding {
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: clamp(1.5rem, 4vw, 3rem);
+      border-top: 5px solid var(--accent);
+    }
+
+    .eyebrow {
+      margin: 0 0 0.4rem;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, h4 { line-height: 1.25; }
+
+    h1 {
+      max-width: 800px;
+      margin: 0;
+      font-size: clamp(2rem, 6vw, 3.7rem);
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      margin: 0 0 1rem;
+      font-size: clamp(1.45rem, 3vw, 2rem);
+      letter-spacing: -0.02em;
+    }
+
+    h3 { margin: 1.8rem 0 0.65rem; }
+    h4 { margin: 1.25rem 0 0.45rem; }
+
+    p { margin: 0.65rem 0; }
+
+    .lede {
+      max-width: 800px;
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .metadata {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 0.8rem;
+      margin-top: 1.7rem;
+    }
+
+    .metadata div {
+      padding: 0.85rem 1rem;
+      border-radius: 0.7rem;
+      background: var(--surface-soft);
+    }
+
+    .metadata dt {
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .metadata dd {
+      margin: 0.2rem 0 0;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .panel,
+    .finding {
+      margin-top: 1.25rem;
+      padding: clamp(1.25rem, 3vw, 2rem);
+    }
+
+    .callout {
+      margin: 1rem 0;
+      padding: 0.9rem 1rem;
+      border-left: 4px solid var(--accent);
+      border-radius: 0.45rem;
+      background: var(--accent-soft);
+    }
+
+    .callout.ok {
+      border-left-color: var(--ok);
+      background: var(--ok-soft);
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 0.85rem 0.8rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 850;
+      letter-spacing: 0.045em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.high { color: var(--high); background: var(--high-soft); }
+    .badge.medium { color: var(--medium); background: var(--medium-soft); }
+    .badge.fixed { color: var(--ok); background: var(--ok-soft); }
+
+    .finding-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .finding-head h2 { margin: 0.25rem 0 0; }
+
+    .finding-id {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 750;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+
+    .fact {
+      padding: 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 0.7rem;
+      background: var(--surface-soft);
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    ul, ol { padding-left: 1.4rem; }
+    li + li { margin-top: 0.4rem; }
+
+    .source-list li { overflow-wrap: anywhere; }
+
+    .priority-list {
+      counter-reset: priority;
+      list-style: none;
+      padding: 0;
+    }
+
+    .priority-list li {
+      position: relative;
+      padding: 0.9rem 0.9rem 0.9rem 3.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .priority-list li:last-child { border-bottom: 0; }
+
+    .priority-list li::before {
+      counter-increment: priority;
+      content: counter(priority);
+      position: absolute;
+      left: 0.75rem;
+      top: 0.9rem;
+      width: 1.8rem;
+      height: 1.8rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 850;
+      line-height: 1.8rem;
+      text-align: center;
+    }
+
+    .footer {
+      margin-top: 1.4rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    @media (max-width: 640px) {
+      .page { width: min(100% - 1rem, 1120px); padding-top: 0.5rem; }
+      .hero, .panel, .finding { border-radius: 0.75rem; }
+      .finding-head { display: block; }
+      .finding-head .badge { margin-top: 0.75rem; }
+    }
+
+    @media print {
+      :root {
+        --bg: #fff;
+        --surface: #fff;
+        --surface-soft: #f5f5f5;
+        --text: #111;
+        --muted: #444;
+        --border: #bbb;
+        --shadow: none;
+      }
+      body { font-size: 10.5pt; }
+      .page { width: 100%; padding: 0; }
+      .hero, .panel, .finding { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Codex-Security review</p>
+      <h1>ChatArchive remaining security findings</h1>
+      <p class="lede">
+        Evidence-backed documentation for the three open findings identified during a static review of the backend. The cyclic ChatGPT mapping denial-of-service finding is not repeated here because it is remediated in the current worktree.
+      </p>
+
+      <dl class="metadata">
+        <div>
+          <dt>Assessed version</dt>
+          <dd>ChatArchive 0.1.0</dd>
+        </div>
+        <div>
+          <dt>Source revision</dt>
+          <dd><code>56d6d1517ab3</code></dd>
+        </div>
+        <div>
+          <dt>Review date</dt>
+          <dd>August 13, 2026</dd>
+        </div>
+        <div>
+          <dt>Method</dt>
+          <dd>Static source and history review</dd>
+        </div>
+      </dl>
+    </header>
+
+    <section class="panel" aria-labelledby="scope-heading">
+      <h2 id="scope-heading">Scope and confidence</h2>
+      <p>
+        The review traced untrusted HTTP input through FastAPI routes, import parsers, SQLAlchemy persistence, and optional Supabase storage. Findings were source-checked at the revision above. The repository has no release tags, so this report does not invent first-affected or fixed release ranges.
+      </p>
+      <div class="callout">
+        <strong>Validation boundary.</strong> No destructive API request, live Supabase overwrite, or load test was executed. Runtime effects described below are expected outcomes derived from reachable source paths. Public-internet exposure, router forwarding, host firewall policy, and external reverse-proxy controls were not assessed.
+      </div>
+      <div class="callout ok">
+        <strong>Finding excluded from this report.</strong> Cyclic and repeated-node ChatGPT mappings are now rejected with a <code>ValueError</code>; dedicated self-cycle, multi-node cycle, and diamond-reference regression tests cover the fix.
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Finding summary</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Severity</th>
+              <th>Finding</th>
+              <th>Primary impact</th>
+              <th>Key prerequisite</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CA-SEC-01</td>
+              <td><span class="badge high">High</span></td>
+              <td><a href="#ca-sec-01">Network-exposed API lacks authentication</a></td>
+              <td>Archive disclosure and destructive mutation</td>
+              <td>Network access to TCP port 8000</td>
+            </tr>
+            <tr>
+              <td>CA-SEC-03</td>
+              <td><span class="badge medium">Medium</span></td>
+              <td><a href="#ca-sec-03">Import filename can overwrite a raw export object</a></td>
+              <td>Supabase raw-backup integrity loss</td>
+              <td>Configured storage and matching source/date/filename</td>
+            </tr>
+            <tr>
+              <td>CA-SEC-04</td>
+              <td><span class="badge medium">Medium</span></td>
+              <td><a href="#ca-sec-04">Imports lack aggregate resource controls</a></td>
+              <td>Memory, CPU, database, or storage exhaustion</td>
+              <td>Repeated or overlapping reachable requests</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <article class="finding" id="ca-sec-01">
+      <div class="finding-head">
+        <div>
+          <div class="finding-id">CA-SEC-01 · CWE-306</div>
+          <h2>Network-exposed archive API lacks authentication</h2>
+        </div>
+        <span class="badge high">High</span>
+      </div>
+
+      <p>
+        The supplied development and packaged entry paths listen on <code>0.0.0.0:8000</code>, while archive routes perform reads and destructive mutations without authenticating the caller or scoping records to an owner. A client that can reach the listener can act with the application’s database authority.
+      </p>
+
+      <div class="facts">
+        <div class="fact">
+          <strong>Attacker</strong>
+          Mallory, an unauthenticated client with network reachability to the backend.
+        </div>
+        <div class="fact">
+          <strong>Protected asset</strong>
+          Alice’s conversation content, archive organization, import history, and settings.
+        </div>
+        <div class="fact">
+          <strong>Violated invariant</strong>
+          Private archive operations must require an authorized principal.
+        </div>
+      </div>
+
+      <h3>Source-established attack path</h3>
+      <ol>
+        <li>The repository launchers execute <code>app.main</code>, and both runtime branches bind Uvicorn to all interfaces.</li>
+        <li><code>GET /conversations</code> queries the unscoped conversation table and returns record IDs and metadata.</li>
+        <li><code>GET /conversations/{id}</code> retrieves the selected conversation and serializes complete message content without a credential or owner check.</li>
+        <li><code>DELETE /conversations/{id}</code> deletes the selected record and commits. Bulk conversation deletion and import-history deletion expose broader destructive variants.</li>
+      </ol>
+
+      <pre><code>@app.get("/conversations/{conversation_id:int}", response_model=ConversationDetail)
+def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
+    ...
+    return conversation
+
+@app.delete("/conversations/{conversation_id:int}")
+def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    ...
+    db.delete(conversation)
+    db.commit()</code></pre>
+
+      <h3>Evidence</h3>
+      <ul class="source-list">
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:63–71 — application setup includes CORS, but no global authentication dependency.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:81–125 and 282–320 — unscoped collection, detail, and delete paths.</li>
+        <li><a href="../backend/app/schemas.py">backend/app/schemas.py</a>:89–138 — conversation detail responses include message content.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:507–560 and 1320–1358 — bulk and import-history deletion paths.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:1363–1918 — unauthenticated settings, tag, project, association, and auto-tag operations.</li>
+        <li><a href="../backend/app/database.py">backend/app/database.py</a>:83–93 — <code>get_db</code> supplies an unrestricted application session; it is lifecycle management, not authentication.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:2067–2075, <a href="../scripts/dev.sh">scripts/dev.sh</a>:33–35, <a href="../scripts/dev.ps1">scripts/dev.ps1</a>:22–23 — supplied launch paths bind to <code>0.0.0.0:8000</code>.</li>
+      </ul>
+
+      <h3>Constraints and counterevidence</h3>
+      <ul>
+        <li>Exploitation requires actual network reachability. The source does not prove exposure to the public Internet or that a firewall permits the connection.</li>
+        <li>CORS limits response sharing to <code>http://localhost:5173</code> and constrains some cross-origin browser requests. It does not authenticate direct HTTP clients or other LAN hosts.</li>
+        <li>Supabase settings responses omit the service-role key. Storage download and delete helpers exist, but the reviewed API does not expose routes for them.</li>
+        <li>The two synchronization routes are placeholders and do not perform full synchronization.</li>
+      </ul>
+
+      <h3>Recommended remediation</h3>
+      <ol>
+        <li>Bind to <code>127.0.0.1</code> by default. Make LAN listening an explicit, security-sensitive opt-in.</li>
+        <li>Require authentication as an application-level or protected-router dependency on every non-health route. For the current single-owner design, a generated high-entropy API token is a reasonable minimum boundary.</li>
+        <li>If multiple users are supported, add durable owner identity and enforce it in every query, mutation, import-history record, project/tag association, and storage object path.</li>
+        <li>Keep privileged database and Supabase credentials server-side. Treat CORS as browser policy, not access control.</li>
+        <li>Add route tests for missing, invalid, expired, and valid credentials, plus cross-owner access tests if multi-user support is introduced.</li>
+      </ol>
+    </article>
+
+    <article class="finding" id="ca-sec-03">
+      <div class="finding-head">
+        <div>
+          <div class="finding-id">CA-SEC-03 · CWE-73 (best fit)</div>
+          <h2>Import filenames can overwrite same-day raw export objects</h2>
+        </div>
+        <span class="badge medium">Medium</span>
+      </div>
+
+      <p>
+        Each import endpoint uploads raw bytes to optional Supabase storage before JSON decoding and source-specific validation. The object key combines a fixed provider, the current UTC date, and the client-supplied filename; upload explicitly enables upsert. Reusing all three key components can replace an existing raw export even if parsing later rejects the request.
+      </p>
+
+      <div class="facts">
+        <div class="fact">
+          <strong>Attacker</strong>
+          Mallory, a reachable unauthenticated client who controls the multipart filename and bytes.
+        </div>
+        <div class="fact">
+          <strong>Protected asset</strong>
+          Alice’s current-day raw export object in the configured Supabase bucket.
+        </div>
+        <div class="fact">
+          <strong>Violated invariant</strong>
+          An unvalidated import must not replace an existing archive object by filename collision.
+        </div>
+      </div>
+
+      <h3>Source-established attack path</h3>
+      <ol>
+        <li>A source-specific import handler accepts <code>UploadFile.filename</code> after checking only that it ends in <code>.json</code>.</li>
+        <li>When Supabase is configured, the handler calls <code>upload_export_file</code> before <code>json.loads</code> and before the source parser.</li>
+        <li>The helper constructs <code>&lt;source&gt;/&lt;UTC-date&gt;/&lt;filename&gt;</code> and uploads with <code>upsert: true</code>.</li>
+        <li>A request using Alice’s provider, same-day filename, and a body no larger than 50 MiB targets the same key. If storage accepts the upload, later parser rejection does not restore the prior object.</li>
+      </ol>
+
+      <pre><code>timestamp = datetime.utcnow().strftime("%Y-%m-%d")
+storage_path = f"{source_type}/{timestamp}/{filename}"
+
+client.storage.from_(SUPABASE_BUCKET_NAME).upload(
+    path=storage_path,
+    file=content,
+    file_options={"content-type": "application/json", "upsert": "true"},
+)</code></pre>
+
+      <h3>Evidence</h3>
+      <ul class="source-list">
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:796–847, 948–998, 1053–1103, and 1158–1208 — all four handlers upload before decoding and parsing.</li>
+        <li><a href="../backend/app/storage.py">backend/app/storage.py</a>:35–87 — conditional storage, 50 MiB cap, deterministic key, and overwrite-enabled upload.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:1954–1981 and <a href="../backend/app/storage.py">backend/app/storage.py</a>:90–128 — unauthenticated listing forwards the caller’s <code>source_type</code> as a storage path and may make an exact collision easier.</li>
+        <li><a href="../backend/app/supabase_client.py">backend/app/supabase_client.py</a>:12–33 — storage is conditional on a Supabase URL and service-role key.</li>
+      </ul>
+
+      <h3>Constraints and counterevidence</h3>
+      <ul>
+        <li>The primitive is limited to the same provider prefix, UTC date, and filename. It does not establish an arbitrary filesystem write or overwrite of unrelated storage prefixes.</li>
+        <li>The application-managed storage helper skips bodies larger than 50 MiB.</li>
+        <li>Supabase must be configured, the bucket must exist, and the upload must succeed. Missing or rejecting storage prevents the overwrite.</li>
+        <li>The source establishes raw-object integrity loss only—not modification of already imported database records, code execution, or disclosure of the service-role credential.</li>
+        <li>The listing route’s exact runtime metadata was not observed, and upload errors are not a reliable overwrite oracle because helper failures are swallowed.</li>
+      </ul>
+
+      <h3>Recommended remediation</h3>
+      <ol>
+        <li>Decode and fully validate an import before attempting to persist its raw bytes.</li>
+        <li>Generate an immutable server-side object identifier, preserve the client filename only as metadata, and disable upsert for raw exports.</li>
+        <li>If logical replacement is required, make it an authenticated, owner-scoped, explicit compare-and-replace operation.</li>
+        <li>Authenticate and authorize import and storage-listing routes; validate listing sources against the supported provider set.</li>
+        <li>Propagate storage failures and define transaction/cleanup behavior between raw storage and database import.</li>
+      </ol>
+    </article>
+
+    <article class="finding" id="ca-sec-04">
+      <div class="finding-head">
+        <div>
+          <div class="finding-id">CA-SEC-04 · CWE-770</div>
+          <h2>Import endpoints lack aggregate resource controls</h2>
+        </div>
+        <span class="badge medium">Medium</span>
+      </div>
+
+      <p>
+        The four unauthenticated import routes cap each request at 100 MiB, but they have no rate, concurrency, aggregate in-flight byte, database-growth, or object-storage quota. Repeated valid requests persist conversations and messages; overlapping requests can retain independent raw and parsed representations; configured Supabase storage can receive additional objects under distinct filenames.
+      </p>
+
+      <div class="facts">
+        <div class="fact">
+          <strong>Attacker</strong>
+          Mallory, a reachable unauthenticated client sending repeated or overlapping imports.
+        </div>
+        <div class="fact">
+          <strong>Protected asset</strong>
+          Backend availability and bounded database/object-storage consumption.
+        </div>
+        <div class="fact">
+          <strong>Violated invariant</strong>
+          Untrusted clients must not consume unbounded aggregate work or persistent capacity.
+        </div>
+      </div>
+
+      <h3>Source-established resource path</h3>
+      <ol>
+        <li>Each handler reads up to <code>MAX_IMPORT_BYTES + 1</code> and retains the accepted body in memory.</li>
+        <li>The request may be copied to storage, decoded into a JSON object graph, normalized into provider-specific records, and reserialized as per-conversation raw JSON.</li>
+        <li>Successful imports create conversation and message rows; a pre-parse import-history commit means malformed accepted-size requests still leave a small failure record.</li>
+        <li>No source-level authentication, rate limit, import semaphore, queue, aggregate byte budget, or persistence quota bounds repeated admitted work.</li>
+      </ol>
+
+      <pre><code>MAX_IMPORT_BYTES = 100 * 1024 * 1024
+
+raw = await file.read(MAX_IMPORT_BYTES + 1)
+if len(raw) &gt; MAX_IMPORT_BYTES:
+    raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
+# No cross-request admission or aggregate budget surrounds this work.</code></pre>
+
+      <h3>Evidence</h3>
+      <ul class="source-list">
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:61, 805–807, 958–960, 1063–1065, and 1168–1170 — exact 100 MiB per-request checks.</li>
+        <li><a href="../backend/app/main.py">backend/app/main.py</a>:809–892, 962–1040, 1067–1145, and 1172–1250 — storage, parse, normalization, ORM persistence, and response work.</li>
+        <li><a href="../backend/app/importers/chatgpt.py">backend/app/importers/chatgpt.py</a>:133–181 and the other provider parsers — normalized lists and per-conversation serialization are accumulated during parsing.</li>
+        <li><a href="../backend/app/storage.py">backend/app/storage.py</a>:35–71 — optional storage adds a second sink, with a 50 MiB per-object cap but no aggregate quota in this helper.</li>
+        <li><a href="../backend/app/database.py">backend/app/database.py</a>:49–58 — connection-pool bounds constrain database connections, but do not bound request buffering or parser admission.</li>
+      </ul>
+
+      <h3>Constraints and counterevidence</h3>
+      <ul>
+        <li>The application rejects a single request larger than 100 MiB, and the storage helper skips a single object larger than 50 MiB. This is not an unbounded single-read finding.</li>
+        <li>Reusing the same provider/date/filename targets the same upsert key; distinct filenames are needed for expected storage object-count growth.</li>
+        <li>Disabling Supabase storage removes the object-storage branch, but not parsing, database work, or import-history growth.</li>
+        <li>Optional duplicate merging can suppress some repeated source IDs, but distinct IDs remain new and storage upload occurs first.</li>
+        <li>No outage threshold, memory multiplier, concurrency count, monetary cost, or observed production impact is claimed. Runtime behavior depends on deployment limits and infrastructure not represented in the repository.</li>
+      </ul>
+
+      <h3>Recommended remediation</h3>
+      <ol>
+        <li>Authenticate imports and add per-principal plus source-address rate limits.</li>
+        <li>Reserve an aggregate in-flight byte budget before reading uploads and place a global bounded queue or semaphore ahead of expensive work.</li>
+        <li>Stream or spool uploads to bounded temporary storage, parse and persist in bounded batches, and clean up on failure or cancellation.</li>
+        <li>Make imports idempotent with provider-appropriate uniqueness rules, and add owner-scoped database and storage quotas plus retention policies.</li>
+        <li>Configure transport-level body limits, deadlines, observability, and provider-side hard limits as defense in depth.</li>
+      </ol>
+    </article>
+
+    <section class="panel" aria-labelledby="priority-heading">
+      <h2 id="priority-heading">Recommended remediation order</h2>
+      <ol class="priority-list">
+        <li><strong>Establish the access boundary.</strong> Default to loopback and require authentication for every non-health route. This reduces reachability for all three findings.</li>
+        <li><strong>Make raw exports immutable by default.</strong> Validate first, generate server-side object IDs, disable implicit upsert, and scope storage operations to an authenticated owner.</li>
+        <li><strong>Bound import work across requests.</strong> Add rate and concurrency admission, aggregate byte reservations, quotas, idempotency, and cleanup behavior.</li>
+      </ol>
+    </section>
+
+    <section class="panel" aria-labelledby="limitations-heading">
+      <h2 id="limitations-heading">Assessment limitations</h2>
+      <ul>
+        <li>This report is based on static source and Git history review of the stated revision.</li>
+        <li>No API exploit, destructive storage mutation, load test, public exposure check, or external infrastructure inspection was performed.</li>
+        <li>The repository contains no tags; version ranges and fixed releases remain unknown.</li>
+        <li>Severity reflects the source-established primitive and realistic prerequisites, not a measured deployment-specific business impact.</li>
+      </ul>
+    </section>
+
+    <footer class="footer">
+      ChatArchive security review · Generated from source-verified Codex-Security findings
+    </footer>
+  </main>
+</body>
+</html>

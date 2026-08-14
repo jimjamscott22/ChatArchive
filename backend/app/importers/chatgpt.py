@@ -30,10 +30,16 @@ def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any
     def _traverse_iterative(node_id: str, mapping: dict) -> list:
         messages = []
         order = 0
-        # stack entries: node_id
+        visited: set[str] = set()
         stack = [node_id]
         while stack:
             current_id = stack.pop()
+            if current_id in visited:
+                raise ValueError(
+                    "Invalid ChatGPT mapping: cycle or repeated node reference"
+                )
+            visited.add(current_id)
+
             node = mapping.get(current_id)
             if not node:
                 continue

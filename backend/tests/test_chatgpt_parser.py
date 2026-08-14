@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
+
+import pytest
+
 from app.importers.chatgpt import parse_chatgpt_export, extract_messages_from_mapping, parse_message, should_include_message
 
 
@@ -283,3 +289,86 @@ def test_extract_messages_from_mapping_tree():
     assert result[0]["content"] == "Message 1"
     assert result[1]["content"] == "Message 2"
     assert result[2]["content"] == "Message 3"
+
+
+def _assert_cyclic_mapping_is_rejected(mapping: dict) -> None:
+    """Run potentially non-terminating parser input in a bounded subprocess."""
+    script = (
+        "from app.importers.chatgpt import parse_chatgpt_export; "
+        f"parse_chatgpt_export([{{'id': 'test', 'mapping': {mapping!r}}}])"
+    )
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("cyclic ChatGPT mapping did not terminate within two seconds")
+
+    assert completed.returncode != 0
+    assert "ValueError" in completed.stderr
+    assert "cycle or repeated node reference" in completed.stderr
+
+
+def test_parse_chatgpt_export_rejects_self_cycle():
+    """A node that references itself must be rejected rather than revisited."""
+    mapping = {
+        "root": {
+            "parent": None,
+            "children": ["root"],
+            "message": None,
+        }
+    }
+
+    _assert_cyclic_mapping_is_rejected(mapping)
+
+
+def test_parse_chatgpt_export_rejects_multi_node_cycle():
+    """A back-edge through multiple nodes must also be rejected."""
+    mapping = {
+        "root": {
+            "parent": None,
+            "children": ["child"],
+            "message": None,
+        },
+        "child": {
+            "parent": "root",
+            "children": ["root"],
+            "message": None,
+        },
+    }
+
+    _assert_cyclic_mapping_is_rejected(mapping)
+
+
+def test_parse_chatgpt_export_rejects_repeated_node_reference():
+    """A shared child must not be processed twice through separate branches."""
+    mapping = {
+        "root": {
+            "parent": None,
+            "children": ["left", "right"],
+            "message": None,
+        },
+        "left": {
+            "parent": "root",
+            "children": ["shared"],
+            "message": None,
+        },
+        "right": {
+            "parent": "root",
+            "children": ["shared"],
+            "message": None,
+        },
+        "shared": {
+            "parent": "left",
+            "children": [],
+            "message": None,
+        },
+    }
+
+    _assert_cyclic_mapping_is_rejected(mapping)
