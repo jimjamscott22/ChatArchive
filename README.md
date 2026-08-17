@@ -1,23 +1,40 @@
 # ChatArchive
 
-## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other AI assistants.
+## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other popular AI assistants
 
-![ChatArchive Infographic](ChatArchiveNLM_Infographic.png)
+<p align="center">
+  <img src="ChatArchiveNLM_Infographic.png"
+       alt="ChatArchive overview"
+       width="600">
+</p>
 
 ## 🌟 Features
 
 - **Universal Import**: Support for ChatGPT, Claude, and other LLM export formats
 - **Smart Search**: Full-text search with keyword filtering and advanced queries
-- **Intelligent Tagging**: Automatic conversation categorization with 9 predefined tags (coding, education, writing, business, etc.)
+- **Intelligent Tagging**: Automatic conversation categorization with 9 predefined tags
 - **Tag-Based Filtering**: Quickly find conversations by topic
 - **Intuitive Organization**: Tag, categorize, and organize conversations effortlessly
 - **Beautiful UI**: Clean, modern interface with dark/light mode support
-- **Privacy First**: All data stays local - no cloud storage required
+- **Privacy First**: All data stays local—no cloud storage required
 - **Export Options**: Export conversations to Markdown, JSON, or PDF
 - **Advanced Analytics**: Visualize your conversation patterns and topics
 - **Code Highlighting**: Automatic syntax highlighting for code snippets
 
-![ChatArchive UI Preview](ChatArchive-Scrnsht.png)
+<details>
+<summary><strong>View the ChatArchive interface</strong></summary>
+
+<br>
+
+<p align="center">
+  <a href="ChatArchive-Scrnsht.png">
+    <img src="ChatArchive-Scrnsht.png"
+         alt="ChatArchive interface preview"
+         width="700">
+  </a>
+</p>
+
+</details>
 
 ## 🚀 Quick Start
 
