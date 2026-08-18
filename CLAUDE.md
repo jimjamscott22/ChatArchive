@@ -142,6 +142,8 @@ SUPABASE_ANON_KEY=<anon key>
 SUPABASE_DB_PASSWORD=<db password>
 SUPABASE_BUCKET_NAME=chatarchive-exports        # optional, this is the default
 DATABASE_URL=postgresql://postgres:<password>@<pooler-host>:5432/postgres
+APP_API_TOKEN=<generate with: python -c "import secrets; print(secrets.token_hex(32))">
+CHATARCHIVE_HOST=127.0.0.1                      # optional, default; set to 0.0.0.0 for LAN access
 ```
 
 There is **no `SUPABASE_KEY`** variable — that name is read nowhere in the codebase.
@@ -151,6 +153,12 @@ to deriving the URL from `SUPABASE_URL` + `SUPABASE_DB_PASSWORD`. Prefer setting
 it explicitly to the Supabase **Session/Transaction Pooler** URI (IPv4 support).
 If `SUPABASE_DB_PASSWORD` is unset, the service role key is used as the password
 with a logged warning.
+
+`APP_API_TOKEN` is **required** — `app.auth` raises at import time if it's unset,
+which means `app.main` (and therefore the whole backend) refuses to start without
+it. Every route except `/health` and the served frontend requires this token as a
+`Bearer` credential (see `app/auth.py`'s `PROTECTED_PREFIXES`); the frontend
+prompts for it once and stores it in the browser's `localStorage`.
 
 ### PyInstaller / Production Build
 
@@ -166,13 +174,18 @@ with a logged warning.
   runs at module scope and raises `RuntimeError` if Supabase is unreachable or
   unconfigured. Importing `app.main` (or anything importing `app.database`) therefore
   requires a live DB. This is the most common reason a session fails to start.
+- **`app.auth` also connects at import time**, in the sense that it raises
+  `RuntimeError` if `APP_API_TOKEN` is unset — same fail-fast pattern, same
+  effect on anything importing `app.main`.
 - **Tests deliberately avoid that** by never importing `app.main`/`app.database`.
   Preserve this — it keeps the suite offline and ~2s.
 - **No SQLite fallback, by design.** `_make_engine()` raises on any non-`postgresql`
   mode. A stale `backend/chatarchive.db` file exists but is a leftover artifact and
   is gitignored (`*.db`) — it is not used.
-- **`App.tsx` has a hardcoded `API_URL`** (`http://localhost:8000`). Works in the
-  PyInstaller build only because the bundled backend also listens on 8000.
+- **`frontend/src/api.ts` has a hardcoded `API_URL`** (`http://localhost:8000`).
+  Works in the PyInstaller build only because the bundled backend also listens
+  on 8000. All API calls go through `apiFetch()` there, which attaches the
+  stored token — don't call raw `fetch()` against `API_URL` from `App.tsx`.
 - **No Tailwind** — see the frontend section. Use the `styles.css` CSS variables.
 - **Root-level `.py` scripts in `backend/`** (`migrate_*.py`, `init_db.py`,
   `check_schema.py`) are one-off migration/inspection utilities, not part of the app.

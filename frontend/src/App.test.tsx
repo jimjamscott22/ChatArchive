@@ -126,6 +126,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
 describe("App UI improvements", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    localStorage.setItem("chatarchive_api_token", "test-token");
     installFetchMock();
     vi.stubGlobal("alert", vi.fn());
     vi.stubGlobal("confirm", vi.fn(() => true));

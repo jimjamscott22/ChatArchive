@@ -4513,3 +4513,62 @@ button.danger:disabled {
     width: 100%;
   }
 }
+
+.auth-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--app-background);
+  padding: 24px;
+}
+
+.auth-gate-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface-panel-strong);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 28px;
+}
+
+.auth-gate-card h2 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.auth-gate-lede {
+  margin: 0 0 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.auth-gate-card .form-group input[type="password"] {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.auth-gate-card .form-group input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-gate-card .import-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-gate-card .import-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-gate-card .error-item {
+  margin: 12px 0 0;
+}

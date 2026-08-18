@@ -3,7 +3,7 @@
 ## A powerful, self-hosted tool to organize, search, and manage your LLM conversation history from ChatGPT, Claude, and other popular AI assistants
 
 <p align="center">
-  <img src="ChatArchiveNLM_Infographic.png"
+  <img src="docs/img/ChatArchiveNLM_Infographic.png"
        alt="ChatArchive overview"
        width="600">
 </p>
@@ -27,8 +27,9 @@
 <br>
 
 <p align="center">
-  <a href="ChatArchive-Scrnsht.png">
-    <img src="ChatArchive-Scrnsht.png"
+  <a href="hive-Scrnsht.png"
+     target="_blank">
+    <img src="docs/img/ChatArchive-Scrnsht.png"
          alt="ChatArchive interface preview"
          width="700">
   </a>

@@ -4,8 +4,9 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import ModalShell from "./components/ModalShell";
+import AuthGate from "./components/AuthGate";
+import { API_URL, apiFetch, getToken, setUnauthorizedHandler } from "./api";
 
-const API_URL = "http://localhost:8000";
 const PAGE_SIZE = 100;
 
 type ThemeId =
@@ -155,6 +156,7 @@ function getInitialConversationId(): number | null {
 }
 
 export default function App() {
+  const [authorized, setAuthorized] = useState(() => !!getToken());
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -199,21 +201,27 @@ export default function App() {
   const [draggedConversationId, setDraggedConversationId] = useState<number | null>(null);
   const [dragOverProject, setDragOverProject] = useState<number | 'uncategorized' | null>(null);
 
-  // Load conversations on mount
   useEffect(() => {
+    setUnauthorizedHandler(() => setAuthorized(false));
+  }, []);
+
+  // Load conversations on mount (once authorized)
+  useEffect(() => {
+    if (!authorized) return;
     refreshConversationList(1);
     loadTags();
     loadProjects();
     checkSupabaseConfiguration();
-  }, []);
+  }, [authorized]);
 
   // When in standalone mode (opened via ?conversation=id), load that conversation
   useEffect(() => {
+    if (!authorized) return;
     const convId = getInitialConversationId();
     if (convId && standaloneMode) {
       loadConversation(convId);
     }
-  }, [standaloneMode]);
+  }, [authorized, standaloneMode]);
 
   // Apply theme
   useEffect(() => {
@@ -345,7 +353,7 @@ export default function App() {
       if (dt) params.append("date_to", dt);
       params.append("sort_by", sbBy ?? sortBy);
       params.append("sort_order", sbOrder ?? sortOrder);
-      const response = await fetch(`${API_URL}/conversations?${params}`);
+      const response = await apiFetch(`${API_URL}/conversations?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
       setCurrentPage(data.page ?? page);
@@ -390,7 +398,7 @@ export default function App() {
       const dt = to ?? dateTo;
       if (df) params.append("date_from", df);
       if (dt) params.append("date_to", dt);
-      const response = await fetch(`${API_URL}/conversations/search?${params}`);
+      const response = await apiFetch(`${API_URL}/conversations/search?${params}`);
       const data = await response.json();
       setConversations(data.items || []);
       setCurrentPage(data.page ?? page);
@@ -428,7 +436,7 @@ export default function App() {
 
   const loadConversation = async (id: number) => {
     try {
-      const response = await fetch(`${API_URL}/conversations/${id}`);
+      const response = await apiFetch(`${API_URL}/conversations/${id}`);
       const data = await response.json();
       setSelectedConversation(data);
     } catch (error) {
@@ -459,7 +467,7 @@ export default function App() {
   // Tag-related functions
   const loadTags = async () => {
     try {
-      const response = await fetch(`${API_URL}/tags`);
+      const response = await apiFetch(`${API_URL}/tags`);
       const data = await response.json();
       const tags = data.items || [];
       setAllTags(tags);
@@ -473,7 +481,7 @@ export default function App() {
 
   const loadProjects = async () => {
     try {
-      const response = await fetch(`${API_URL}/projects`);
+      const response = await apiFetch(`${API_URL}/projects`);
       const data = await response.json();
       const projects = data.items || [];
       setAllProjects(projects);
@@ -542,7 +550,7 @@ export default function App() {
 
   const checkSupabaseConfiguration = async () => {
     try {
-      const response = await fetch(`${API_URL}/settings/supabase-dashboard-url`);
+      const response = await apiFetch(`${API_URL}/settings/supabase-dashboard-url`);
       if (response.ok) {
         const data = await response.json();
         setSupabaseDashboardUrl(data.dashboard_url);
@@ -561,7 +569,7 @@ export default function App() {
   const autoTagAllConversations = async () => {
     try {
       setAutoTagging(true);
-      const response = await fetch(`${API_URL}/conversations/auto-tag`, {
+      const response = await apiFetch(`${API_URL}/conversations/auto-tag`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ overwrite_existing: false }),
@@ -589,7 +597,7 @@ export default function App() {
 
   const removeTagFromConversation = async (conversationId: number, tagId: number) => {
     try {
-      const response = await fetch(`${API_URL}/conversations/${conversationId}/tags/${tagId}`, {
+      const response = await apiFetch(`${API_URL}/conversations/${conversationId}/tags/${tagId}`, {
         method: 'DELETE',
       });
       
@@ -611,7 +619,7 @@ export default function App() {
 
   const createProject = async (name: string, description: string, color: string) => {
     try {
-      const response = await fetch(`${API_URL}/projects`, {
+      const response = await apiFetch(`${API_URL}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, color }),
@@ -633,7 +641,7 @@ export default function App() {
 
   const moveConversationToProject = async (conversationId: number, projectId: number | null) => {
     try {
-      const response = await fetch(`${API_URL}/conversations/${conversationId}/move`, {
+      const response = await apiFetch(`${API_URL}/conversations/${conversationId}/move`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
@@ -763,7 +771,7 @@ export default function App() {
     if (!selectedConversation || !confirm('Delete this conversation?')) return;
 
     try {
-      await fetch(`${API_URL}/conversations/${selectedConversation.id}`, {
+      await apiFetch(`${API_URL}/conversations/${selectedConversation.id}`, {
         method: 'DELETE'
       });
       setSelectedConversation(null);
@@ -1114,6 +1122,10 @@ export default function App() {
     dateFrom ? `From: ${dateFrom}` : null,
     dateTo ? `To: ${dateTo}` : null,
   ].filter((value): value is string => Boolean(value));
+
+  if (!authorized) {
+    return <AuthGate onSuccess={() => setAuthorized(true)} />;
+  }
 
   // Standalone mode: show only the conversation (opened in new window)
   if (standaloneMode) {
@@ -2339,7 +2351,7 @@ function TagManagerModal({
 
     setSaving(true);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         editingTag ? `${API_URL}/tags/${editingTag.id}` : `${API_URL}/tags`,
         {
           method: editingTag ? "PUT" : "POST",
@@ -2371,7 +2383,7 @@ function TagManagerModal({
     setStatus(null);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/tags/${tag.id}`, {
+      const response = await apiFetch(`${API_URL}/tags/${tag.id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
@@ -2491,7 +2503,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   const loadSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/settings/import`);
+      const response = await apiFetch(`${API_URL}/settings/import`);
       const data = await response.json();
       setSettings(data);
     } catch (error) {
@@ -2569,7 +2581,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     try {
       setStatus("Uploading...");
       setError(null);
-      const response = await fetch(`${API_URL}/import/${source}`, {
+      const response = await apiFetch(`${API_URL}/import/${source}`, {
         method: "POST",
         body: formData,
       });
@@ -2671,7 +2683,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/settings/import`);
+      const response = await apiFetch(`${API_URL}/settings/import`);
       const data = await response.json();
       setSettings(data);
       setLoading(false);
@@ -2683,7 +2695,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const loadHistory = async () => {
     try {
-      const response = await fetch(`${API_URL}/import/history?page_size=20`);
+      const response = await apiFetch(`${API_URL}/import/history?page_size=20`);
       const data = await response.json();
       setHistory(data.items || []);
     } catch (error) {
@@ -2696,7 +2708,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/settings/import`, {
+      const response = await apiFetch(`${API_URL}/settings/import`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
@@ -2724,7 +2736,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     if (!confirm(message)) return;
     
     try {
-      const response = await fetch(`${API_URL}/import/history/${historyId}?delete_conversations=true`, {
+      const response = await apiFetch(`${API_URL}/import/history/${historyId}?delete_conversations=true`, {
         method: 'DELETE'
       });
       
@@ -2976,7 +2988,7 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/conversations/duplicates?strategy=${strategy}`);
+      const response = await apiFetch(`${API_URL}/conversations/duplicates?strategy=${strategy}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -3052,7 +3064,7 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
     setDeleting(true);
     try {
-      const response = await fetch(`${API_URL}/conversations/bulk`, {
+      const response = await apiFetch(`${API_URL}/conversations/bulk`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3282,7 +3294,7 @@ function ProjectManagerModal({
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/projects`, {
+      const response = await apiFetch(`${API_URL}/projects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -3311,7 +3323,7 @@ function ProjectManagerModal({
     setStatus(null);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/projects/${project.id}`, {
+      const response = await apiFetch(`${API_URL}/projects/${project.id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
@@ -3427,7 +3439,7 @@ function AnalyticsScreen({ range }: { range: "30d" | "all" }) {
     setLoading(true);
     setError(null);
     const qs = range === "30d" ? "?days=30" : "";
-    fetch(`${API_URL}/analytics${qs}`)
+    apiFetch(`${API_URL}/analytics${qs}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

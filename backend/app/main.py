@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -10,15 +11,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, List
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
 
+from app.auth import is_authorized, is_protected_path
 from app.database import get_db, DATABASE_MODE
 from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
@@ -69,6 +71,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def enforce_api_token(request: Request, call_next):
+    # OPTIONS must always pass through unchecked: the browser's CORS preflight
+    # for a request carrying an Authorization header is itself unauthenticated,
+    # and it needs to reach CORSMiddleware to get its Access-Control-Allow-*
+    # headers or every authenticated fetch fails CORS before this check matters.
+    if request.method != "OPTIONS" and is_protected_path(request.url.path):
+        if not is_authorized(request.headers.get("authorization")):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -2066,10 +2080,15 @@ if __name__ == "__main__":
         ).start()
         uvicorn.run(
             app,
-            host="0.0.0.0",
+            host=os.environ.get("CHATARCHIVE_HOST", "127.0.0.1"),
             port=8000,
             reload=False,
             log_config=None,
         )
     else:
-        uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+        uvicorn.run(
+            "app.main:app",
+            host=os.environ.get("CHATARCHIVE_HOST", "127.0.0.1"),
+            port=8000,
+            reload=True,
+        )
