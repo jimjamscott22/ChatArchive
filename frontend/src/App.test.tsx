@@ -127,6 +127,7 @@ describe("App UI improvements", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.setItem("chatarchive_api_token", "test-token");
+    localStorage.removeItem("chatarchive-theme");
     installFetchMock();
     vi.stubGlobal("alert", vi.fn());
     vi.stubGlobal("confirm", vi.fn(() => true));
@@ -203,5 +204,19 @@ describe("App UI improvements", () => {
 
     expect(await screen.findByText(/couldn't load duplicate scan/i)).toBeInTheDocument();
     expect(screen.queryByText(/no duplicate conversations found/i)).not.toBeInTheDocument();
+  });
+
+  it("applies and persists a selected theme while announcing the current choice", async () => {
+    render(<App />);
+
+    const paletteButton = await screen.findByRole("button", { name: /choose theme/i });
+    expect(paletteButton).toHaveAccessibleName(/current: dark/i);
+
+    fireEvent.click(paletteButton);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Ocean" }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "ocean");
+    expect(localStorage.getItem("chatarchive-theme")).toBe("ocean");
+    expect(paletteButton).toHaveAccessibleName(/current: ocean/i);
   });
 });

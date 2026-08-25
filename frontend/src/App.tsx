@@ -23,17 +23,17 @@ type ThemeId =
   | 'forest';
 
 const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: 'dark', label: 'Dark', swatch: '#1c1812' },
-  { id: 'light', label: 'Light', swatch: '#f5edd8' },
-  { id: 'sepia', label: 'Sepia', swatch: '#f1e4c8' },
-  { id: 'coffee', label: 'Coffee', swatch: '#3b2a1a' },
-  { id: 'rose', label: 'Rose', swatch: '#f3d6d2' },
-  { id: 'sunset', label: 'Sunset', swatch: '#f4a261' },
-  { id: 'nord', label: 'Nord', swatch: '#2e3440' },
-  { id: 'dracula', label: 'Dracula', swatch: '#bd93f9' },
-  { id: 'solarized-dark', label: 'Solarized', swatch: '#002b36' },
-  { id: 'ocean', label: 'Ocean', swatch: '#0b2545' },
-  { id: 'forest', label: 'Forest', swatch: '#1f2a1f' },
+  { id: 'dark', label: 'Dark', swatch: 'linear-gradient(135deg, #17130f 0 46%, #33281b 46% 72%, #c4944a 72%)' },
+  { id: 'light', label: 'Light', swatch: 'linear-gradient(135deg, #f8f1e4 0 46%, #dfc99f 46% 72%, #8b4513 72%)' },
+  { id: 'sepia', label: 'Sepia', swatch: 'linear-gradient(135deg, #f2e4ca 0 46%, #d6ba88 46% 72%, #8a4b1a 72%)' },
+  { id: 'coffee', label: 'Coffee', swatch: 'linear-gradient(135deg, #1d120b 0 46%, #4a2f1b 46% 72%, #d49a5c 72%)' },
+  { id: 'rose', label: 'Rose', swatch: 'linear-gradient(135deg, #f8ebe8 0 46%, #dfb9b4 46% 72%, #8a2940 72%)' },
+  { id: 'sunset', label: 'Sunset', swatch: 'linear-gradient(135deg, #25100e 0 46%, #713824 46% 72%, #f4a261 72%)' },
+  { id: 'nord', label: 'Nord', swatch: 'linear-gradient(135deg, #242933 0 46%, #414c5e 46% 72%, #88c0d0 72%)' },
+  { id: 'dracula', label: 'Dracula', swatch: 'linear-gradient(135deg, #1f2029 0 46%, #44475a 46% 72%, #bd93f9 72%)' },
+  { id: 'solarized-dark', label: 'Solarized', swatch: 'linear-gradient(135deg, #00232b 0 46%, #0d4450 46% 72%, #268bd2 72%)' },
+  { id: 'ocean', label: 'Ocean', swatch: 'linear-gradient(135deg, #07192e 0 46%, #154b75 46% 72%, #29b6f6 72%)' },
+  { id: 'forest', label: 'Forest', swatch: 'linear-gradient(135deg, #172017 0 46%, #3b5032 46% 72%, #8fbf6e 72%)' },
 ];
 
 const THEME_STORAGE_KEY = 'chatarchive-theme';
@@ -200,6 +200,7 @@ export default function App() {
   const [fullWidthConvo, setFullWidthConvo] = useState(false);
   const [draggedConversationId, setDraggedConversationId] = useState<number | null>(null);
   const [dragOverProject, setDragOverProject] = useState<number | 'uncategorized' | null>(null);
+  const currentThemeLabel = THEMES.find(t => t.id === theme)?.label ?? 'Dark';
 
   useEffect(() => {
     setUnauthorizedHandler(() => setAuthorized(false));
@@ -2266,7 +2267,7 @@ export default function App() {
           className="theme-palette-btn"
           onClick={() => setPaletteOpen(o => !o)}
           title="Choose theme"
-          aria-label="Choose theme"
+          aria-label={`Choose theme. Current: ${currentThemeLabel}`}
           aria-expanded={paletteOpen}
         >
           <Palette size={30} />
@@ -3749,5 +3750,4 @@ function KeyboardShortcutsModal({ onClose }: { onClose: () => void }) {
     </ModalShell>
   );
 }
-
 
