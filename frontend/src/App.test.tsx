@@ -206,7 +206,7 @@ describe("App UI improvements", () => {
     expect(screen.queryByText(/no duplicate conversations found/i)).not.toBeInTheDocument();
   });
 
-  it("applies and persists a selected theme while announcing the current choice", async () => {
+    it("applies and persists a selected theme while announcing the current choice", async () => {
     render(<App />);
 
     const paletteButton = await screen.findByRole("button", { name: /choose theme/i });
@@ -218,5 +218,16 @@ describe("App UI improvements", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "ocean");
     expect(localStorage.getItem("chatarchive-theme")).toBe("ocean");
     expect(paletteButton).toHaveAccessibleName(/current: ocean/i);
+  });
+
+  it("toggles from a palette theme to light without treating it as dark", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /choose theme/i }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Ocean" }));
+    fireEvent.click(screen.getByRole("button", { name: /toggle theme/i }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(localStorage.getItem("chatarchive-theme")).toBe("light");
   });
 });

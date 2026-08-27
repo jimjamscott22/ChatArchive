@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any
+
+from app.importers.timestamps import parse_unix_timestamp
 
 
 def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any]]:
@@ -12,21 +13,20 @@ def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any
     """
     if not mapping:
         return []
-    
-    # Build the message chain by following parent-child relationships
-    messages = []
-    
+
     # Find root node (has no parent or parent is null)
     root_id = None
     for node_id, node in mapping.items():
+        if not isinstance(node, dict):
+            continue
         if node.get("parent") is None:
             root_id = node_id
             break
-    
+
     if not root_id:
         # Fallback: just iterate through all nodes
         root_id = list(mapping.keys())[0]
-    
+
     def _traverse_iterative(node_id: str, mapping: dict) -> list:
         messages = []
         order = 0
@@ -41,7 +41,7 @@ def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any
             visited.add(current_id)
 
             node = mapping.get(current_id)
-            if not node:
+            if not node or not isinstance(node, dict):
                 continue
             message = node.get("message")
             if message and should_include_message(message):
@@ -49,82 +49,109 @@ def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any
                 if msg_data:
                     messages.append(msg_data)
                     order += 1
+            children = node.get("children") or []
+            if not isinstance(children, list):
+                children = []
             # push children in reverse order so first child is processed first
-            for child_id in reversed(node.get("children", [])):
+            for child_id in reversed(children):
                 stack.append(child_id)
         return messages
 
-    messages = _traverse_iterative(root_id, mapping)
-    return messages
+    return _traverse_iterative(root_id, mapping)
 
 
 def should_include_message(message: dict[str, Any]) -> bool:
     """Determine if a message should be included (skip hidden system messages)."""
-    if not message:
+    if not message or not isinstance(message, dict):
         return False
-    
-    metadata = message.get("metadata", {})
-    
+
+    metadata = message.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
     # Skip visually hidden messages
     if metadata.get("is_visually_hidden_from_conversation"):
         return False
-    
-    # Get content
-    content = message.get("content", {})
+
+    content = message.get("content")
+    if not isinstance(content, dict):
+        content = {}
     content_type = content.get("content_type", "")
-    
+
     # Skip certain content types that aren't displayable
     if content_type in ("user_editable_context", "system_error"):
         return False
-    
-    # Get author role
-    author = message.get("author", {})
+
+    author = message.get("author") or {}
+    if not isinstance(author, dict):
+        author = {}
     role = author.get("role", "")
-    
+
     # Include user and assistant messages
     if role in ("user", "assistant"):
         return True
-    
+
     # Include tool messages (for function calls)
     if role == "tool":
         return True
-    
+
     return False
+
+
+def _extract_text_content(content: dict[str, Any]) -> str:
+    """Pull readable text from ChatGPT content.parts, dict parts, or content.text."""
+    texts: list[str] = []
+    parts = content.get("parts") or []
+    if isinstance(parts, list):
+        for part in parts:
+            if isinstance(part, str):
+                if part.strip():
+                    texts.append(part)
+            elif isinstance(part, dict):
+                nested = part.get("text") or part.get("transcript") or ""
+                if nested:
+                    texts.append(str(nested))
+    if texts:
+        return "\n".join(texts)
+
+    raw_text = content.get("text")
+    if isinstance(raw_text, str):
+        return raw_text
+    return ""
 
 
 def parse_message(message: dict[str, Any], order: int) -> dict[str, Any] | None:
     """Parse a single message into our normalized format."""
-    author = message.get("author", {})
-    role = author.get("role", "unknown")
-    
-    content = message.get("content", {})
-    content_type = content.get("content_type", "text")
-    
-    # Extract text content
-    parts = content.get("parts", [])
-    text_content = ""
-    if parts:
-        # Join all text parts
-        text_parts = [p for p in parts if isinstance(p, str)]
-        text_content = "\n".join(text_parts)
-    
-    # Skip empty messages
-    if not text_content.strip():
+    if not message or not isinstance(message, dict):
         return None
-    
-    # Parse timestamp
-    create_time = message.get("create_time")
+
+    author = message.get("author") or {}
+    if not isinstance(author, dict):
+        author = {}
+    role = author.get("role", "unknown")
+
+    content = message.get("content")
+    if not isinstance(content, dict):
+        content = {}
+    content_type = content.get("content_type", "text")
+
+    text_content = _extract_text_content(content)
+    if not text_content.strip():
+        if content_type in ("image", "multimodal_text"):
+            text_content = "[image]"
+        else:
+            return None
+
     created_at = None
+    create_time = message.get("create_time")
     if create_time:
-        try:
-            created_at = datetime.fromtimestamp(create_time)
-        except (OSError, TypeError, ValueError):
-            pass
-    
-    # Extract model info
-    metadata = message.get("metadata", {})
+        created_at = parse_unix_timestamp(create_time)
+
+    metadata = message.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
     model = metadata.get("model_slug")
-    
+
     return {
         "source_id": message.get("id"),
         "role": role,
@@ -149,30 +176,18 @@ def parse_chatgpt_export(payload: Any) -> list[dict[str, Any]]:
 
     parsed = []
     for item in conversations:
+        if not isinstance(item, dict):
+            continue
         title = item.get("title")
-        
-        # Parse timestamps
-        create_time = item.get("create_time")
-        update_time = item.get("update_time")
-        
-        created_at = None
-        if create_time is not None:
-            try:
-                created_at = datetime.fromtimestamp(create_time)
-            except (OSError, TypeError, ValueError):
-                pass
-        
-        updated_at = None
-        if update_time is not None:
-            try:
-                updated_at = datetime.fromtimestamp(update_time)
-            except (OSError, TypeError, ValueError):
-                pass
-        
-        # Extract messages from mapping
-        mapping = item.get("mapping", {})
+
+        created_at = parse_unix_timestamp(item["create_time"]) if item.get("create_time") is not None else None
+        updated_at = parse_unix_timestamp(item["update_time"]) if item.get("update_time") is not None else None
+
+        mapping = item.get("mapping") or {}
+        if not isinstance(mapping, dict):
+            mapping = {}
         messages = extract_messages_from_mapping(mapping)
-        
+
         parsed.append({
             "source": "chatgpt",
             "source_id": item.get("id") or item.get("conversation_id"),
@@ -181,7 +196,7 @@ def parse_chatgpt_export(payload: Any) -> list[dict[str, Any]]:
             "updated_at": updated_at,
             "message_count": len(messages),
             "raw_json": json.dumps(item),
-            "messages": messages,  # Include parsed messages
+            "messages": messages,
         })
-    
+
     return parsed

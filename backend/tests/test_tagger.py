@@ -219,3 +219,11 @@ def test_keyword_matching():
     # Test case insensitivity
     assert engine._match_keyword("python", "Python programming")
     assert engine._match_keyword("python", "PYTHON code")
+
+
+def test_keyword_matching_languages_with_symbols():
+    engine = TaggingEngine()
+    assert engine._match_keyword("c++", "I am learning C++ templates")
+    assert engine._match_keyword("c#", "A C# class example")
+    assert engine._match_keyword("ci/cd", "Set up CI/CD pipelines")
+

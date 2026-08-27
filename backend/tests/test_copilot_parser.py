@@ -309,3 +309,60 @@ def test_parse_copilot_export_invalid_format():
         assert False, "Should raise ValueError for empty list"
     except ValueError as e:
         assert "Unrecognized Copilot export format" in str(e)
+
+
+def test_parse_copilot_export_empty_conversations_key():
+    try:
+        parse_copilot_export({"conversations": []})
+        assert False, "Should raise ValueError for empty conversations array"
+    except ValueError as e:
+        assert "Unrecognized Copilot export format" in str(e)
+
+
+def test_parse_copilot_vscode_requests():
+    payload = {
+        "sessionId": "sess-1",
+        "requests": [
+            {
+                "message": {"text": "How do I write a loop?"},
+                "response": [{"value": "Use for i in range(n):"}],
+            }
+        ],
+    }
+    result = parse_copilot_export(payload)
+    assert len(result) == 1
+    assert result[0]["source_id"] == "sess-1"
+    assert len(result[0]["messages"]) == 2
+    assert result[0]["messages"][0]["role"] == "user"
+    assert "loop" in result[0]["messages"][0]["content"]
+    assert result[0]["messages"][1]["role"] == "assistant"
+
+
+def test_parse_copilot_turns_generate_title():
+    payload = [
+        {
+            "id": "t1",
+            "turns": [
+                {"role": "user", "content": "Explain async/await in JavaScript"},
+                {"role": "assistant", "content": "It pauses execution..."},
+            ],
+        }
+    ]
+    result = parse_copilot_export(payload)
+    assert "Explain async/await" in result[0]["title"]
+
+
+def test_parse_copilot_request_and_response_object():
+    payload = [
+        {
+            "id": "both",
+            "messages": [{"request": "user q", "response": "asst a"}],
+        }
+    ]
+    result = parse_copilot_export(payload)
+    assert len(result[0]["messages"]) == 2
+    assert result[0]["messages"][0]["role"] == "user"
+    assert result[0]["messages"][0]["content"] == "user q"
+    assert result[0]["messages"][1]["role"] == "assistant"
+    assert result[0]["messages"][1]["content"] == "asst a"
+

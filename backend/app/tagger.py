@@ -222,8 +222,14 @@ class TaggingEngine:
             True if keyword is found as a whole word (case-insensitive)
         """
         # Use word boundaries for exact word matching
-        # This prevents 'class' from matching 'classical'
-        pattern = r'\b' + re.escape(keyword) + r'\b'
+        # This prevents 'class' from matching 'classical'.
+        # Keywords that already end in a non-word character (c++, c#, ci/cd)
+        # cannot use a trailing \b — that boundary never matches.
+        escaped = re.escape(keyword)
+        if re.search(r"\w$", keyword):
+            pattern = r"\b" + escaped + r"\b"
+        else:
+            pattern = r"\b" + escaped
         return bool(re.search(pattern, text, re.IGNORECASE))
     
     def get_tag_info(self, tag_name: str) -> Dict[str, str] | None:

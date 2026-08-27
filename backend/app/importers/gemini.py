@@ -4,85 +4,79 @@ import json
 from datetime import datetime
 from typing import Any
 
+from app.importers.timestamps import parse_flexible_timestamp
+
+
+def _first_present(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
 
 def parse_gemini_export(payload: Any) -> list[dict[str, Any]]:
     """
     Parse a Gemini/Bard export file into conversations with messages.
-    
+
     Google Takeout format typically has conversations in a structured format.
     Gemini exports may include:
     - conversations array
     - individual chat history items
     """
     conversations = None
-    
-    # Detect format
+
     if isinstance(payload, list):
         conversations = payload
     elif isinstance(payload, dict):
-        # Check for various Google export formats
-        conversations = (
-            payload.get("conversations") or 
-            payload.get("chats") or
-            payload.get("history") or
-            [payload]
-        )
-    
+        # Use `in` so an explicit empty array is not treated as missing.
+        if "conversations" in payload:
+            conversations = payload.get("conversations")
+        elif "chats" in payload:
+            conversations = payload.get("chats")
+        elif "history" in payload:
+            conversations = payload.get("history")
+        else:
+            conversations = [payload]
+
     if not conversations:
         raise ValueError("Unrecognized Gemini export format")
-    
+
     parsed = []
     for item in conversations:
-        # Extract conversation metadata
+        if not isinstance(item, dict):
+            continue
         conv_id = item.get("id") or item.get("conversation_id")
         title = item.get("title") or item.get("name") or "Untitled"
-        
-        # Parse timestamps
+
         created_at = parse_timestamp(
-            item.get("create_time") or 
-            item.get("created_at") or 
-            item.get("timestamp")
+            item.get("create_time")
+            or item.get("created_at")
+            or item.get("timestamp")
+            or item.get("time")
         )
         updated_at = parse_timestamp(
-            item.get("update_time") or 
-            item.get("updated_at")
+            item.get("update_time") or item.get("updated_at")
         )
-        
-        # Extract messages - handle multiple possible structures
-        messages_data = (
-            item.get("messages") or 
-            item.get("turns") or 
-            item.get("content") or
-            []
-        )
-        
+
+        messages_data = _first_present(item, "messages", "turns", "content")
+        if not isinstance(messages_data, list):
+            messages_data = []
+
         messages = []
-        for idx, msg in enumerate(messages_data):
-            # Determine role
-            role = determine_role(msg)
-            
-            # Get content - Gemini may use different keys
-            content = extract_content(msg)
-            if not content.strip():
+        for msg in messages_data:
+            if not isinstance(msg, dict):
                 continue
-            
-            # Parse message timestamp
-            msg_created = parse_timestamp(
-                msg.get("timestamp") or 
-                msg.get("created_at") or
-                msg.get("create_time")
-            )
-            
-            messages.append({
-                "source_id": msg.get("id") or msg.get("message_id"),
-                "role": role,
-                "content": content,
-                "content_type": "text",
-                "created_at": msg_created or created_at,
-                "order_index": idx,
-                "model": msg.get("model") or item.get("model") or "gemini",
-            })
-        
+            for role, content, msg_created, msg_id, model in _iter_gemini_messages(msg, item, created_at):
+                messages.append({
+                    "source_id": msg_id,
+                    "role": role,
+                    "content": content,
+                    "content_type": "text",
+                    "created_at": msg_created,
+                    "order_index": len(messages),
+                    "model": model,
+                })
+
         parsed.append({
             "source": "gemini",
             "source_id": conv_id,
@@ -93,72 +87,98 @@ def parse_gemini_export(payload: Any) -> list[dict[str, Any]]:
             "raw_json": json.dumps(item),
             "messages": messages,
         })
-    
+
     return parsed
+
+
+def _iter_gemini_messages(
+    msg: dict[str, Any],
+    item: dict[str, Any],
+    fallback_created: datetime | None,
+) -> list[tuple[str, str, datetime | None, Any, Any]]:
+    """Yield (role, content, created_at, source_id, model) for a turn."""
+    model = msg.get("model") or item.get("model") or "gemini"
+    msg_created = parse_timestamp(
+        msg.get("timestamp") or msg.get("created_at") or msg.get("create_time")
+    ) or fallback_created
+    msg_id = msg.get("id") or msg.get("message_id")
+
+    prompt = msg.get("prompt") or msg.get("user_input")
+    response = msg.get("response")
+    if isinstance(prompt, str) and prompt.strip() and isinstance(response, str) and response.strip():
+        return [
+            ("user", prompt.strip(), msg_created, msg_id, model),
+            ("assistant", response.strip(), msg_created, msg_id, model),
+        ]
+
+    role = determine_role(msg)
+    content = extract_content(msg)
+    if not content.strip():
+        return []
+    return [(role, content, msg_created, msg_id, model)]
 
 
 def determine_role(msg: dict[str, Any]) -> str:
     """Determine message role from various Gemini message formats."""
-    # Check common role fields
     role = msg.get("role") or msg.get("author") or msg.get("sender")
-    
+
     if role:
         role_lower = str(role).lower()
         if role_lower in ("user", "human"):
             return "user"
         elif role_lower in ("model", "assistant", "ai", "gemini", "bard"):
             return "assistant"
-    
-    # Fallback: check if it's marked as user content
+
     if msg.get("user_input") or msg.get("prompt"):
         return "user"
-    
+
     return "assistant"
+
+
+def _join_parts(parts: Any) -> str:
+    if not isinstance(parts, list) or not parts:
+        return ""
+    texts: list[str] = []
+    for part in parts:
+        if isinstance(part, str):
+            if part.strip():
+                texts.append(part)
+        elif isinstance(part, dict):
+            nested = part.get("text") or part.get("value") or ""
+            if nested:
+                texts.append(str(nested))
+    return "\n".join(texts)
 
 
 def extract_content(msg: dict[str, Any]) -> str:
     """Extract text content from various Gemini message formats."""
-    # Try multiple possible content fields
+    if msg.get("user_input"):
+        return str(msg.get("user_input") or "")
+    if "parts" in msg:
+        joined = _join_parts(msg.get("parts"))
+        if joined:
+            return joined
+
     content = (
-        msg.get("text") or
-        msg.get("content") or
-        msg.get("message") or
-        msg.get("prompt") or
-        msg.get("response") or
-        ""
+        msg.get("text")
+        or msg.get("content")
+        or msg.get("message")
+        or msg.get("prompt")
+        or msg.get("response")
+        or ""
     )
-    
-    # Handle nested content structures
+
     if isinstance(content, dict):
-        content = content.get("text") or content.get("parts", [""])[0]
-    elif isinstance(content, list):
-        # Join multiple parts
-        content = "\n".join(str(part) for part in content if part)
-    
+        nested_text = content.get("text")
+        if nested_text:
+            return str(nested_text)
+        return _join_parts(content.get("parts"))
+    if isinstance(content, list):
+        return _join_parts(content)
+
     return str(content)
 
 
 def parse_timestamp(timestamp: Any) -> datetime | None:
     """Parse various timestamp formats used by Gemini."""
-    if not timestamp:
-        return None
-    
-    try:
-        # Try ISO format
-        if isinstance(timestamp, str):
-            # Handle various ISO formats
-            timestamp = timestamp.replace("Z", "+00:00")
-            for fmt in ["%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]:
-                try:
-                    return datetime.strptime(timestamp.split("+")[0], fmt)
-                except ValueError:
-                    continue
-        # Try Unix timestamp (seconds or milliseconds)
-        elif isinstance(timestamp, (int, float)):
-            if timestamp > 1e12:  # Likely milliseconds
-                timestamp = timestamp / 1000
-            return datetime.fromtimestamp(timestamp)
-    except (ValueError, OSError, TypeError):
-        pass
-    
-    return None
+    return parse_flexible_timestamp(timestamp)

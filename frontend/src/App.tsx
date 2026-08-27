@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import ModalShell from "./components/ModalShell";
 import AuthGate from "./components/AuthGate";
-import { API_URL, apiFetch, getToken, setUnauthorizedHandler } from "./api";
+import { API_URL, apiFetch, apiErrorMessage, getToken, setUnauthorizedHandler } from "./api";
 
 const PAGE_SIZE = 100;
 
@@ -152,7 +152,9 @@ type DuplicatesData = {
 function getInitialConversationId(): number | null {
   const params = new URLSearchParams(window.location.search);
   const id = params.get("conversation");
-  return id ? parseInt(id, 10) : null;
+  if (!id) return null;
+  const parsed = Number.parseInt(id, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export default function App() {
@@ -160,8 +162,11 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [listTotal, setListTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [standaloneMode, setStandaloneMode] = useState(() => getInitialConversationId() !== null);
+  const [standaloneError, setStandaloneError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
@@ -200,6 +205,10 @@ export default function App() {
   const [fullWidthConvo, setFullWidthConvo] = useState(false);
   const [draggedConversationId, setDraggedConversationId] = useState<number | null>(null);
   const [dragOverProject, setDragOverProject] = useState<number | 'uncategorized' | null>(null);
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const listRequestId = useRef(0);
+  const searchDebounceRef = useRef<number | null>(null);
   const currentThemeLabel = THEMES.find(t => t.id === theme)?.label ?? 'Dark';
 
   useEffect(() => {
@@ -246,6 +255,36 @@ export default function App() {
         return;
       }
 
+      const modalOpen =
+        showImportModal ||
+        showSettingsModal ||
+        showDuplicatesModal ||
+        showTagModal ||
+        showProjectModal ||
+        showMoveToProjectModal ||
+        showShortcutsModal;
+
+      // Escape: Close modals first; don't also dismiss analytics behind them
+      if (e.key === 'Escape') {
+        setShowImportModal(false);
+        setShowSettingsModal(false);
+        setShowDuplicatesModal(false);
+        setShowTagModal(false);
+        setShowProjectModal(false);
+        setShowMoveToProjectModal(false);
+        setShowShortcutsModal(false);
+        setShowMenu(false);
+        setShowAddTag(false);
+        if (!modalOpen) {
+          setAnalyticsView(false);
+        }
+        return;
+      }
+
+      if (modalOpen) {
+        return;
+      }
+
       // Ctrl/Cmd + K: Focus search
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
@@ -267,24 +306,12 @@ export default function App() {
         setShowSettingsModal(true);
       }
 
-      // Escape: Close modals
-      if (e.key === 'Escape') {
-        setShowImportModal(false);
-        setShowSettingsModal(false);
-        setShowDuplicatesModal(false);
-        setAnalyticsView(false);
-        setShowTagModal(false);
-        setShowProjectModal(false);
-        setShowMoveToProjectModal(false);
-        setShowShortcutsModal(false);
-        setShowMenu(false);
-      }
-
       // Arrow keys: Navigate conversations
       if (e.key === 'ArrowDown' && conversations.length > 0) {
         e.preventDefault();
         const newIndex = Math.min(selectedConversationIndex + 1, conversations.length - 1);
         setSelectedConversationIndex(newIndex);
+        setAnalyticsView(false);
         loadConversation(conversations[newIndex].id);
       }
 
@@ -292,6 +319,7 @@ export default function App() {
         e.preventDefault();
         const newIndex = Math.max(selectedConversationIndex - 1, 0);
         setSelectedConversationIndex(newIndex);
+        setAnalyticsView(false);
         loadConversation(conversations[newIndex].id);
       }
 
@@ -316,7 +344,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed]);
+  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed, showImportModal, showSettingsModal, showDuplicatesModal, showTagModal, showProjectModal, showMoveToProjectModal, showShortcutsModal]);
 
   // Update selected index when conversations change
   useEffect(() => {
@@ -330,18 +358,39 @@ export default function App() {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
+  const applyListResponse = (
+    requestId: number,
+    data: { items?: Conversation[]; page?: number; pages?: number; total?: number },
+    page: number,
+    reload: (nextPage: number) => void,
+  ) => {
+    if (requestId !== listRequestId.current) return;
+    const items = data.items || [];
+    const pages = data.pages ?? 0;
+    if (items.length === 0 && page > 1 && (pages === 0 || page > pages)) {
+      reload(Math.max(1, pages || page - 1));
+      return;
+    }
+    setListError(null);
+    setConversations(items);
+    setCurrentPage(data.page ?? page);
+    setTotalPages(pages);
+    setListTotal(typeof data.total === "number" ? data.total : items.length);
+    setLoading(false);
+    setIsSearching(false);
+  };
+
   const loadConversations = async (source?: string, page = 1, tag?: string | null, projectId?: number | null, activeTags?: string[], from?: string, to?: string, sbBy?: string, sbOrder?: string) => {
+    const requestId = ++listRequestId.current;
     try {
       setLoading(true);
+      setListError(null);
       const params = new URLSearchParams({
         page_size: PAGE_SIZE.toString(),
         page: page.toString(),
       });
       if (source && source !== "all") {
         params.append("source", source);
-      }
-      if (tag) {
-        params.append("tag", tag);
       }
       const tagsToSend = activeTags ?? selectedTags;
       tagsToSend.forEach(t => params.append("tags", t));
@@ -355,14 +404,23 @@ export default function App() {
       params.append("sort_by", sbBy ?? sortBy);
       params.append("sort_order", sbOrder ?? sortOrder);
       const response = await apiFetch(`${API_URL}/conversations?${params}`);
+      if (requestId !== listRequestId.current) return;
+      if (!response.ok) {
+        setListError("Couldn't load conversations. Please try again.");
+        setLoading(false);
+        setIsSearching(false);
+        return;
+      }
       const data = await response.json();
-      setConversations(data.items || []);
-      setCurrentPage(data.page ?? page);
-      setTotalPages(data.pages ?? 0);
-      setLoading(false);
+      applyListResponse(requestId, data, page, (nextPage) => {
+        loadConversations(source, nextPage, tag, projectId, activeTags, from, to, sbBy, sbOrder);
+      });
     } catch (error) {
+      if (requestId !== listRequestId.current) return;
       console.error("Failed to load conversations:", error);
+      setListError("Couldn't load conversations. Please try again.");
       setLoading(false);
+      setIsSearching(false);
     }
   };
 
@@ -376,9 +434,11 @@ export default function App() {
     from?: string,
     to?: string,
   ) => {
+    const requestId = ++listRequestId.current;
     try {
       setLoading(true);
       setIsSearching(true);
+      setListError(null);
       const params = new URLSearchParams({
         q: query,
         page_size: PAGE_SIZE.toString(),
@@ -386,9 +446,6 @@ export default function App() {
       });
       if (source && source !== "all") {
         params.append("source", source);
-      }
-      if (tag) {
-        params.append("tag", tag);
       }
       const tagsToSend = activeTags ?? selectedTags;
       tagsToSend.forEach(t => params.append("tags", t));
@@ -400,15 +457,22 @@ export default function App() {
       if (df) params.append("date_from", df);
       if (dt) params.append("date_to", dt);
       const response = await apiFetch(`${API_URL}/conversations/search?${params}`);
+      if (requestId !== listRequestId.current) return;
+      if (!response.ok) {
+        setListError("Search failed. Please try again.");
+        setLoading(false);
+        setIsSearching(false);
+        return;
+      }
       const data = await response.json();
-      setConversations(data.items || []);
-      setCurrentPage(data.page ?? page);
-      setTotalPages(data.pages ?? 0);
-      setLoading(false);
+      applyListResponse(requestId, data, page, (nextPage) => {
+        loadSearchResults(query, nextPage, source, tag, projectId, activeTags, from, to);
+      });
     } catch (error) {
+      if (requestId !== listRequestId.current) return;
       console.error("Search failed:", error);
+      setListError("Search failed. Please try again.");
       setLoading(false);
-    } finally {
       setIsSearching(false);
     }
   };
@@ -438,10 +502,29 @@ export default function App() {
   const loadConversation = async (id: number) => {
     try {
       const response = await apiFetch(`${API_URL}/conversations/${id}`);
+      if (!response.ok) {
+        if (standaloneMode) {
+          setStandaloneError("Conversation not found.");
+        } else {
+          alert("Couldn't open that conversation. It may have been deleted.");
+        }
+        return;
+      }
       const data = await response.json();
+      if (!data || !Array.isArray(data.messages)) {
+        if (standaloneMode) {
+          setStandaloneError("Conversation could not be loaded.");
+        }
+        return;
+      }
+      setStandaloneError(null);
+      setAnalyticsView(false);
       setSelectedConversation(data);
     } catch (error) {
       console.error("Failed to load conversation:", error);
+      if (standaloneMode) {
+        setStandaloneError("Couldn't load conversation.");
+      }
     }
   };
 
@@ -453,16 +536,20 @@ export default function App() {
 
   const [isSearching, setIsSearching] = useState(false);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
     setCurrentPage(1);
-    if (!query.trim()) {
-      setIsSearching(false);
-      loadConversations(sourceFilter, 1, selectedTag, selectedProject);
-      return;
+    if (searchDebounceRef.current) {
+      window.clearTimeout(searchDebounceRef.current);
     }
-
-    await loadSearchResults(query.trim(), 1, sourceFilter, selectedTag, selectedProject);
+    searchDebounceRef.current = window.setTimeout(() => {
+      if (!query.trim()) {
+        setIsSearching(false);
+        loadConversations(sourceFilter, 1, null, selectedProject, selectedTags);
+        return;
+      }
+      loadSearchResults(query.trim(), 1, sourceFilter, null, selectedProject, selectedTags);
+    }, 200);
   };
 
   // Tag-related functions
@@ -472,6 +559,7 @@ export default function App() {
       const data = await response.json();
       const tags = data.items || [];
       setAllTags(tags);
+      setSelectedTags((prev) => prev.filter((name) => tags.some((tag: TagType) => tag.name === name)));
       if (selectedTag && !tags.some((tag: TagType) => tag.name === selectedTag)) {
         setSelectedTag(null);
       }
@@ -495,9 +583,11 @@ export default function App() {
   };
 
   const handleTagFilter = (tagName: string | null) => {
-    setSelectedTag(tagName);
+    const next = tagName ? [tagName] : [];
+    setSelectedTag(null);
+    setSelectedTags(next);
     setCurrentPage(1);
-    refreshConversationList(1, undefined, tagName, selectedProject);
+    refreshConversationList(1, undefined, null, selectedProject, next);
   };
 
   const handleProjectFilter = (projectId: number | null) => {
@@ -511,8 +601,9 @@ export default function App() {
       ? selectedTags.filter(t => t !== tagName)
       : [...selectedTags, tagName];
     setSelectedTags(next);
+    setSelectedTag(null);
     setCurrentPage(1);
-    refreshConversationList(1, undefined, selectedTag, selectedProject, next);
+    refreshConversationList(1, undefined, null, selectedProject, next);
   };
 
   const handleDateFrom = (value: string) => {
@@ -546,7 +637,7 @@ export default function App() {
     setSortOrder("desc");
     setCurrentPage(1);
     setIsSearching(false);
-    loadConversations("all", 1, null, null, [], "", "");
+    loadConversations("all", 1, null, null, [], "", "", "created_at", "desc");
   };
 
   const checkSupabaseConfiguration = async () => {
@@ -583,9 +674,11 @@ export default function App() {
       const result = await response.json();
       console.log('Auto-tagging result:', result);
       
-      // Reload conversations and tags
       await loadTags();
       refreshConversationList(currentPage);
+      if (selectedConversation) {
+        await loadConversation(selectedConversation.id);
+      }
       
       alert(`Successfully tagged ${result.tagged_count} conversations!`);
     } catch (error) {
@@ -628,7 +721,7 @@ export default function App() {
       
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to create project');
+        throw new Error(apiErrorMessage(error, 'Failed to create project'));
       }
       
       await loadProjects();
@@ -765,21 +858,51 @@ export default function App() {
       loadSearchResults(searchQuery.trim(), 1, source, selectedTag, selectedProject);
       return;
     }
-    loadConversations(source, 1, selectedTag, selectedProject);
+    loadConversations(source, 1, null, selectedProject, selectedTags);
   };
 
   const handleDeleteConversation = async () => {
     if (!selectedConversation || !confirm('Delete this conversation?')) return;
 
     try {
-      await apiFetch(`${API_URL}/conversations/${selectedConversation.id}`, {
+      const response = await apiFetch(`${API_URL}/conversations/${selectedConversation.id}`, {
         method: 'DELETE'
       });
+      if (!response.ok) {
+        alert('Failed to delete conversation. Please try again.');
+        return;
+      }
       setSelectedConversation(null);
-      refreshConversationList();
+      const nextPage = conversations.length <= 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+      refreshConversationList(nextPage);
       setShowMenu(false);
     } catch (error) {
       console.error('Failed to delete:', error);
+      alert('Failed to delete conversation. Please try again.');
+    }
+  };
+
+  const addTagToConversation = async (conversationId: number, tagName: string) => {
+    const trimmed = tagName.trim();
+    if (!trimmed) return;
+    try {
+      const response = await apiFetch(`${API_URL}/conversations/${conversationId}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag_name: trimmed }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(apiErrorMessage(errorData, 'Failed to add tag'));
+      }
+      setNewTagName("");
+      setShowAddTag(false);
+      await loadTags();
+      await loadConversation(conversationId);
+      refreshConversationList(currentPage);
+    } catch (error) {
+      console.error("Failed to add tag:", error);
+      alert(error instanceof Error ? error.message : "Failed to add tag");
     }
   };
 
@@ -1056,7 +1179,7 @@ export default function App() {
   const handleExportPdf = () => {
     if (!selectedConversation) return;
 
-    const exportWindow = window.open("", "_blank", "noopener,noreferrer");
+    const exportWindow = window.open("", "_blank");
     if (!exportWindow) {
       alert("Unable to open the export window. Please allow popups and try again.");
       return;
@@ -1067,7 +1190,10 @@ export default function App() {
     exportWindow.document.close();
     exportWindow.focus();
 
+    let printed = false;
     const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
       exportWindow.print();
     };
 
@@ -1091,7 +1217,10 @@ export default function App() {
   const visibleProjects = new Set(
     conversations.map((conv) => conv.project?.id).filter((projectId): projectId is number => projectId !== undefined)
   );
-  const uncategorizedCount = conversations.filter((conv) => !conv.project).length;
+  const uncategorizedCount = Math.max(
+    0,
+    listTotal - allProjects.reduce((sum, project) => sum + (project.conversation_count || 0), 0)
+  );
   const recentConversations = conversations.slice(0, 4);
   const supportedSources = ["chatgpt", "claude", "gemini", "copilot"];
   const topTags = [...allTags]
@@ -1117,7 +1246,9 @@ export default function App() {
   const activeFilters = [
     sourceFilter !== "all" ? getSourceInfo(sourceFilter).name : null,
     selectedTag ? `Tag: ${selectedTag}` : null,
-    ...(selectedTags.length > 0 ? selectedTags.map(t => `Tag: ${t}`) : []),
+    ...selectedTags
+      .filter((t) => t !== selectedTag)
+      .map(t => `Tag: ${t}`),
     selectedProjectLabel ? `Project: ${selectedProjectLabel}` : null,
     highlightQuery ? `Search: "${highlightQuery}"` : null,
     dateFrom ? `From: ${dateFrom}` : null,
@@ -1144,7 +1275,11 @@ export default function App() {
           </a>
         </div>
         <div className="standalone-content">
-          {selectedConversation ? (
+          {standaloneError ? (
+            <div className="welcome-state">
+              <p>{standaloneError}</p>
+            </div>
+          ) : selectedConversation ? (
             <div className="conversation-view">
               {getOrderedMessages(selectedConversation).map((msg, index) => (
                 <div key={msg.id} className={`message ${msg.role}`}>
@@ -1164,9 +1299,7 @@ export default function App() {
                       </div>
                       <div className="message-time">
                         {formatDateTime(msg.created_at)}
-                        {index < selectedConversation.messages.length - 1 && (
-                          <span className="message-number">Message {index + 1}</span>
-                        )}
+                        <span className="message-number">Message {index + 1}</span>
                       </div>
                     </div>
                   </div>
@@ -1220,7 +1353,7 @@ export default function App() {
               </button>
             )}
             <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
           </div>
         </div>
@@ -1254,7 +1387,11 @@ export default function App() {
                     <p className="sidebar-panel-label">Library</p>
                     <h2 className="sidebar-panel-title">{highlightQuery ? "Search results" : "Browse archive"}</h2>
                   </div>
-                  <span className="sidebar-panel-meta">{conversations.length} shown</span>
+                  <span className="sidebar-panel-meta">
+                    {listTotal > conversations.length
+                      ? `${conversations.length} of ${listTotal}`
+                      : `${listTotal || conversations.length} shown`}
+                  </span>
                 </div>
 
                 <button className="import-btn" onClick={() => setShowImportModal(true)}>
@@ -1527,21 +1664,42 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            ) : listError ? (
+              <div className="empty-state">
+                <div className="empty-icon">⚠️</div>
+                <h3>Couldn't load conversations</h3>
+                <p>{listError}</p>
+                <button className="empty-action-btn" onClick={() => refreshConversationList(currentPage)}>
+                  Try again
+                </button>
+              </div>
             ) : conversations.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">💬</div>
-                <h3>No conversations yet</h3>
-                <p>Import your first conversation to get started</p>
+                <h3>{hasActiveFilters ? "No matching conversations" : "No conversations yet"}</h3>
+                <p>
+                  {hasActiveFilters
+                    ? "Try clearing a filter or broadening your search."
+                    : "Import your first conversation to get started"}
+                </p>
+                {hasActiveFilters ? (
+                  <button className="empty-action-btn" onClick={clearAllFilters}>
+                    Clear filters
+                  </button>
+                ) : (
                 <button className="empty-action-btn" onClick={() => setShowImportModal(true)}>
                   <Upload size={16} />
                   Import Conversations
                 </button>
+                )}
               </div>
             ) : (
               (() => {
                 let lastGroup = "";
                 return conversations.map((conv) => {
-                  const group = getDateGroupLabel(conv.updated_at || conv.created_at);
+                  const group = (sortBy === "created_at" || sortBy === "updated_at")
+                    ? getDateGroupLabel(conv.updated_at || conv.created_at)
+                    : "";
                   const showDivider = group !== lastGroup;
                   lastGroup = group;
                   return (
@@ -1668,7 +1826,7 @@ export default function App() {
             )}
           </div>
 
-          {!sidebarCollapsed && totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="pagination-controls">
               <button
                 className="pagination-btn"
@@ -1804,7 +1962,13 @@ export default function App() {
                       <Download size={16} />
                       Export as PDF
                     </button>
-                    <button className="menu-item" onClick={() => setShowMenu(false)}>
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setShowAddTag(true);
+                        setShowMenu(false);
+                      }}
+                    >
                       <Tag size={16} />
                       Add tags
                     </button>
@@ -1841,9 +2005,9 @@ export default function App() {
                 Updated {getRelativeTime(selectedConversation.updated_at || selectedConversation.created_at)}
               </span>
 
-              {selectedConversation.tags && selectedConversation.tags.length > 0 && (
+              {(selectedConversation.tags && selectedConversation.tags.length > 0) || showAddTag ? (
                 <div className="conversation-tags-header">
-                  {selectedConversation.tags.map((tag) => (
+                  {selectedConversation.tags?.map((tag) => (
                     <span
                       key={tag.id}
                       className="tag tag-badge"
@@ -1874,8 +2038,36 @@ export default function App() {
                       </button>
                     </span>
                   ))}
+                  {showAddTag && (
+                    <form
+                      className="add-tag-form"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        addTagToConversation(selectedConversation.id, newTagName);
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={newTagName}
+                        onChange={(e) => setNewTagName(e.target.value)}
+                        placeholder="Tag name"
+                        autoFocus
+                        list="existing-tags"
+                        aria-label="New tag name"
+                      />
+                      <datalist id="existing-tags">
+                        {allTags
+                          .filter((tag) => !selectedConversation.tags?.some((assigned) => assigned.id === tag.id))
+                          .map((tag) => (
+                            <option key={tag.id} value={tag.name} />
+                          ))}
+                      </datalist>
+                      <button type="submit" className="add-tag-submit">Add</button>
+                      <button type="button" onClick={() => { setShowAddTag(false); setNewTagName(""); }}>Cancel</button>
+                    </form>
+                  )}
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </header>
@@ -2006,7 +2198,7 @@ export default function App() {
                   <div className="overview-stats-grid">
                     <article className="overview-stat-card">
                       <span className="overview-stat-label">Conversations in view</span>
-                      <strong>{conversations.length}</strong>
+                      <strong>{listTotal || conversations.length}</strong>
                     </article>
                     <article className="overview-stat-card">
                       <span className="overview-stat-label">Messages in view</span>
@@ -2198,9 +2390,7 @@ export default function App() {
                       </div>
                       <div className="message-time">
                         {formatDateTime(msg.created_at)}
-                        {index < selectedConversation.messages.length - 1 && (
-                          <span className="message-number">Message {index + 1}</span>
-                        )}
+                        <span className="message-number">Message {index + 1}</span>
                       </div>
                     </div>
                   </div>
@@ -2218,12 +2408,27 @@ export default function App() {
 
       {/* Import Modal */}
       {showImportModal && (
-        <ImportModal onClose={() => setShowImportModal(false)} onSuccess={() => refreshConversationList()} />
+        <ImportModal
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            loadTags();
+            loadProjects();
+            refreshConversationList(1);
+          }}
+        />
       )}
 
       {/* Settings Modal */}
       {showSettingsModal && (
-        <SettingsModal onClose={() => setShowSettingsModal(false)} />
+        <SettingsModal
+          onClose={() => setShowSettingsModal(false)}
+          onConversationsChanged={() => {
+            setSelectedConversation(null);
+            loadTags();
+            loadProjects();
+            refreshConversationList(1);
+          }}
+        />
       )}
 
       {showDuplicatesModal && (
@@ -2237,7 +2442,11 @@ export default function App() {
         <TagManagerModal
           tags={allTags}
           onClose={() => setShowTagModal(false)}
-          onTagsUpdated={loadTags}
+          onTagsUpdated={() => {
+            loadTags();
+            refreshConversationList(currentPage);
+            if (selectedConversation) loadConversation(selectedConversation.id);
+          }}
         />
       )}
 
@@ -2245,7 +2454,11 @@ export default function App() {
         <ProjectManagerModal
           projects={allProjects}
           onClose={() => setShowProjectModal(false)}
-          onProjectsUpdated={loadProjects}
+          onProjectsUpdated={() => {
+            loadProjects();
+            refreshConversationList(currentPage);
+            if (selectedConversation) loadConversation(selectedConversation.id);
+          }}
         />
       )}
 
@@ -2363,7 +2576,7 @@ function TagManagerModal({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to save tag.");
+        throw new Error(apiErrorMessage(errorData, "Failed to save tag."));
       }
 
       await onTagsUpdated();
@@ -2389,7 +2602,7 @@ function TagManagerModal({
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to delete tag.");
+        throw new Error(apiErrorMessage(errorData, "Failed to delete tag."));
       }
       await onTagsUpdated();
       if (editingTag?.id === tag.id) {
@@ -2588,19 +2801,20 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Import failed");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(apiErrorMessage(errorData, "Import failed"));
       }
 
       const data = await response.json();
       const countMsg = data.length === 1 ? "1 conversation" : `${data.length} conversations`;
-      const dupeMsg = settings?.auto_merge_duplicates ? " (duplicates skipped)" : "";
+      const dupeMsg = settings?.auto_merge_duplicates ? " (existing conversations updated)" : "";
       setStatus(`Imported ${countMsg} from ${sourceInfo[source].name}!${dupeMsg}`);
       setTimeout(() => {
         onSuccess();
         onClose();
       }, 1500);
     } catch (err) {
+      setStatus(null);
       setError(err instanceof Error ? err.message : "Import failed");
     }
   };
@@ -2653,14 +2867,14 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
         {settings?.auto_merge_duplicates && (
           <div className="import-info">
-            ℹ️ Auto-merge duplicates is enabled. Existing conversations will be skipped.
+            ℹ️ Auto-merge duplicates is enabled. Existing conversations with the same source ID will be updated.
           </div>
         )}
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary" disabled={!file}>
-            Import from {sourceInfo[source].name}
+          <button type="submit" className="primary" disabled={!file || status === "Uploading..."}>
+            {status === "Uploading..." ? "Importing..." : `Import from ${sourceInfo[source].name}`}
           </button>
         </div>
       </form>
@@ -2670,12 +2884,19 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   );
 }
 
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({
+  onClose,
+  onConversationsChanged,
+}: {
+  onClose: () => void;
+  onConversationsChanged?: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<'import' | 'history'>('import');
   const [settings, setSettings] = useState<ImportSettings | null>(null);
   const [history, setHistory] = useState<ImportHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -2708,6 +2929,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
     if (!settings) return;
     
     setSaving(true);
+    setSaveError(null);
     try {
       const response = await apiFetch(`${API_URL}/settings/import`, {
         method: "PUT",
@@ -2718,9 +2940,13 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       if (response.ok) {
         const updated = await response.json();
         setSettings(updated);
+      } else {
+        const errorData = await response.json().catch(() => null);
+        setSaveError(apiErrorMessage(errorData, "Failed to save settings."));
       }
     } catch (error) {
       console.error("Failed to save settings:", error);
+      setSaveError("Failed to save settings.");
     } finally {
       setSaving(false);
     }
@@ -2748,8 +2974,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
       const result = await response.json();
       alert(`Deleted import and ${result.deleted_conversations} conversation(s)`);
       
-      // Refresh history list
       await loadHistory();
+      onConversationsChanged?.();
     } catch (error) {
       console.error("Failed to delete import:", error);
       alert("Failed to delete import");
@@ -2885,6 +3111,7 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
                 {saving ? "Saving..." : "Save Settings"}
               </button>
             </div>
+            {saveError && <div className="status-error">{saveError}</div>}
           </div>
         ) : (
           <div className="history-panel">
@@ -2982,6 +3209,7 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   };
 
   useEffect(() => {
+    setSelectedForDeletion(new Set());
     loadDuplicates();
   }, [strategy]);
 
@@ -3037,8 +3265,12 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       return dateB - dateA;
     });
 
+    const keeperId = sorted[0]?.id;
     const newSelected = new Set(selectedForDeletion);
-    sorted.slice(1).forEach(conv => newSelected.add(conv.id));
+    sorted.forEach((conv) => {
+      if (conv.id === keeperId) newSelected.delete(conv.id);
+      else newSelected.add(conv.id);
+    });
     setSelectedForDeletion(newSelected);
   };
 
@@ -3049,8 +3281,12 @@ function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       return dateA - dateB;
     });
 
+    const keeperId = sorted[0]?.id;
     const newSelected = new Set(selectedForDeletion);
-    sorted.slice(1).forEach(conv => newSelected.add(conv.id));
+    sorted.forEach((conv) => {
+      if (conv.id === keeperId) newSelected.delete(conv.id);
+      else newSelected.add(conv.id);
+    });
     setSelectedForDeletion(newSelected);
   };
 
@@ -3303,7 +3539,7 @@ function ProjectManagerModal({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to create project.");
+        throw new Error(apiErrorMessage(errorData, "Failed to create project."));
       }
 
       await onProjectsUpdated();
@@ -3329,7 +3565,7 @@ function ProjectManagerModal({
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to delete project.");
+        throw new Error(apiErrorMessage(errorData, "Failed to delete project."));
       }
       await onProjectsUpdated();
       setStatus("Project deleted.");

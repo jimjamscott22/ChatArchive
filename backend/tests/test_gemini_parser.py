@@ -363,3 +363,40 @@ def test_parse_gemini_export_invalid_format():
         assert False, "Should raise ValueError for empty list"
     except ValueError as e:
         assert "Unrecognized Gemini export format" in str(e)
+
+
+def test_parse_gemini_export_empty_conversations_key_is_empty():
+    try:
+        parse_gemini_export({"conversations": []})
+        assert False, "Should raise ValueError for empty conversations array"
+    except ValueError as e:
+        assert "Unrecognized Gemini export format" in str(e)
+
+
+def test_extract_content_top_level_parts():
+    assert extract_content({"role": "user", "parts": [{"text": "hello"}]}) == "hello"
+    assert extract_content({"content": {"parts": []}}) == ""
+
+
+def test_parse_gemini_prompt_and_response_split():
+    payload = [
+        {
+            "id": "g1",
+            "title": "Turn",
+            "messages": [
+                {"prompt": "What is AI?", "response": "Artificial intelligence..."}
+            ],
+        }
+    ]
+    result = parse_gemini_export(payload)
+    assert len(result[0]["messages"]) == 2
+    assert result[0]["messages"][0]["role"] == "user"
+    assert result[0]["messages"][0]["content"] == "What is AI?"
+    assert result[0]["messages"][1]["role"] == "assistant"
+
+
+def test_parse_timestamp_negative_offset():
+    result = parse_timestamp("2024-01-01T12:00:00-05:00")
+    assert result is not None
+    assert result.hour == 17
+
