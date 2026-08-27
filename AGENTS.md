@@ -21,7 +21,7 @@ importable from there (`[tool.hatch.build.targets.wheel] packages = ["app"]`).
 
 ```bash
 # Start backend (from repo root)
-cd backend && python -m app.main
+cd backend && uv run python -m app.main
 
 # Start frontend (from repo root)
 cd frontend && npm run dev
@@ -42,7 +42,7 @@ cd backend
 python -m pytest tests/ -v                              # All tests
 python -m pytest tests/test_chatgpt_parser.py -v       # Single test file
 python -m pytest tests/test_claude_parser.py::TestName  # Single test
-python -m pytest tests/ --cov=app/importers            # With coverage
+python -m pytest tests/ --cov=app/importers            # needs: uv add --dev pytest-cov
 python verify_parsers.py                               # End-to-end parser verification
 
 # Frontend (vitest + Testing Library + jsdom)
@@ -55,7 +55,9 @@ npm test                                                # vitest run
 that way — importing either module in a test forces a live DB on the whole suite.
 
 Frontend tests mock `fetch` wholesale (see `installFetchMock` in `App.test.tsx`);
-an unmatched URL throws, so new API calls in `App.tsx` need a matching branch there.
+an unmatched URL throws, so new API calls need a matching branch there. Tests
+pre-seed `localStorage.chatarchive_api_token` to skip `AuthGate` (`GET /stats`
+is not mocked).
 
 ### Frontend Build
 
@@ -81,26 +83,28 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 
 - **`main.py`** — FastAPI entry point. Defines all REST API routes (conversations, messages, tags, projects, search, import, export). Starts uvicorn on port 8000. In PyInstaller mode, redirects stdout/stderr to a log file.
 - **`database.py`** — SQLAlchemy engine/session setup (PostgreSQL only). Builds the URL from `DATABASE_URL`, else derives it from `SUPABASE_URL` + `SUPABASE_DB_PASSWORD`. Exports `engine`, `SessionLocal`, `DATABASE_MODE`, and the `get_db()` FastAPI dependency. **Connects at import time** — see Gotchas.
+- **`auth.py`** — Bearer-token gate. Raises at import if `APP_API_TOKEN` is unset. `PROTECTED_PREFIXES` lists which routes require auth (`/health` and the bundled frontend do not).
 - **`models.py`** — SQLAlchemy ORM: `Conversation`, `Message`, `Tag`, `ConversationTag`, `ImportHistory`, `ImportSettings`, `Project`.
 - **`schemas.py`** — Pydantic v2 schemas for request/response validation.
 - **`tagger.py`** — Keyword-based auto-tagger with 9 categories: `coding`, `education`, `writing`, `business`, `data-science`, `tech-support`, `creative`, `productivity`, `personal`.
 - **`storage.py`** — Supabase Storage integration for raw export file uploads.
 - **`supabase_client.py`** — Lazy singleton Supabase client (`get_supabase_client()`), plus `is_supabase_configured()` / `get_connection_info()` / `get_dashboard_url()` used by status endpoints.
 - **`query_filters.py`** — `apply_conversation_filters()`, the shared filter builder used by **both** the list and search endpoints (source, tags, project, date range). Change filtering logic here, not in `main.py`.
-- **`importers/`** — One file per LLM source (`chatgpt.py`, `Codex.py`, `copilot.py`, `gemini.py`). See "Adding a New Importer" below for the actual contract.
+- **`importers/`** — One file per LLM source (`chatgpt.py`, `claude.py`, `copilot.py`, `gemini.py`). See "Adding a New Importer" below for the actual contract.
 - **`preprocessing/`** — Standalone clean → classify → deduplicate → extract → count-tokens pipeline (`pipeline.py` orchestrates `cleaner`/`classifier`/`deduplication`/`extractor`/`parser`/`token_counter`).
   ⚠️ **Not wired into the import flow.** `main.py` does not import it; it is tested but currently unused. Don't assume imported conversations have been preprocessed.
 
 ### Frontend (`frontend/src/`)
 
-- **`App.tsx`** — Single large component (~145KB) containing all UI logic: conversation list, message viewer, import modal, tag filter, project folder management, search, analytics dashboard, and export.
+- **`App.tsx`** — Single large component (~3750 lines) containing almost all UI: list, viewer, import, tags, projects, search, analytics, export, theme picker.
+- **`api.ts`** — Hardcoded `API_URL = "http://localhost:8000"` plus `apiFetch()` (attaches the Bearer token from `localStorage`).
 - **`main.tsx`** — React 18 mount point.
-- **`components/`** — Extracted shared components (currently `ModalShell.tsx`).
-- **`styles.css`** — **Plain hand-written CSS. There is no Tailwind in this project** (no `tailwind` dependency, no `tailwind.config.*`, no PostCSS). Styling uses CSS custom properties defined on `:root` — an "aged charcoal & parchment" dark token set (`--bg-primary`, `--text-primary`, `--accent`, `--surface-panel`, `--shadow-md`, …). Style new UI by reusing these tokens; utility classes like `flex gap-4` will silently do nothing.
+- **`components/`** — `ModalShell.tsx` (shared dialog) and `AuthGate.tsx` (token prompt; verifies with `GET /stats`).
+- **`styles.css`** — **Plain hand-written CSS. There is no Tailwind** (no `tailwind` dependency, no `tailwind.config.*`, no PostCSS). Tokens live on `:root` and `[data-theme="..."]` (11 themes). Reuse those variables (`--bg-primary`, `--text-primary`, `--accent`, `--surface-panel`, `--shadow-md`, …); utility classes like `flex gap-4` will silently do nothing.
 
 Key deps: `react-markdown` + `rehype-highlight` (message rendering), `react-window` (list virtualization), `lucide-react` (icons).
 
-The frontend communicates exclusively with the FastAPI backend. `API_URL` is **hardcoded** to `http://localhost:8000` at the top of `App.tsx` — no env var, no Vite proxy. There is no direct Supabase client call from the frontend.
+The frontend talks only to FastAPI. No env var, no Vite proxy, no browser Supabase client.
 
 ### Database Schema
 
@@ -195,5 +199,4 @@ prompts for it once and stores it in the browser's `localStorage`.
 
 `docs/` holds deeper references — consult before large changes:
 `API.md` (endpoint reference), `TESTING.md`, `DEVELOPMENT.md`, `IMPORT_GUIDE.md`,
-`TAGGING.md`, `PROJECT_FOLDERS_IMPLEMENTATION.md`,
-`APPLICATION_STYLE_HANDOFF.md` (design tokens), `Port-conflict_&_docker-mngmt.md`.
+`TAGGING.md`, `docs/styles/APPLICATION_STYLE_HANDOFF.md` (design tokens).
