@@ -36,3 +36,26 @@ export async function apiFetch(url: string, init: RequestInit = {}): Promise<Res
 
   return response;
 }
+
+export function apiErrorMessage(errorData: unknown, fallback: string): string {
+  if (!errorData || typeof errorData !== "object") {
+    return fallback;
+  }
+  const detail = (errorData as { detail?: unknown }).detail;
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return fallback;
+}

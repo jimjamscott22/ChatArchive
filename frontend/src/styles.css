@@ -3526,6 +3526,32 @@ button.danger:disabled {
   font-size: 13px;
 }
 
+.add-tag-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.add-tag-form input {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  min-width: 120px;
+}
+
+.add-tag-submit {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .search-highlight {
   background: rgba(250, 204, 21, 0.35);
   color: inherit;
