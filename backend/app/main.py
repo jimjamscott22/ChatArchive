@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_, text
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
 
@@ -61,6 +61,7 @@ from app.tagger import get_tagging_engine
 logger = logging.getLogger(__name__)
 
 MAX_IMPORT_BYTES = 100 * 1024 * 1024  # 100 MB
+TITLE_MAX_LEN = 255
 
 app = FastAPI(title="ChatArchive API")
 
@@ -165,10 +166,29 @@ def search_conversations(
     search_messages: bool = Query(True, description="Also search message content"),
 ) -> ConversationListResponse:
     """Search conversations by title and message content using full-text search."""
+    if not search_messages:
+        return _search_conversations_ilike(
+            db, q, page, page_size, source, tag, tags, project_id, date_from, date_to, search_messages
+        )
     try:
+        if not _fts_query_usable(db, q):
+            return _search_conversations_ilike(
+                db, q, page, page_size, source, tag, tags, project_id, date_from, date_to, search_messages
+            )
         return _search_conversations_fts(db, q, page, page_size, source, tag, tags, project_id, date_from, date_to)
-    except OperationalError:
-        return _search_conversations_ilike(db, q, page, page_size, source, tag, tags, project_id, date_from, date_to, search_messages)
+    except (OperationalError, ProgrammingError):
+        return _search_conversations_ilike(
+            db, q, page, page_size, source, tag, tags, project_id, date_from, date_to, search_messages
+        )
+
+
+def _fts_query_usable(db: Session, q: str) -> bool:
+    """English FTS turns stopword-only queries into an empty tsquery (zero hits)."""
+    try:
+        value = db.execute(text("SELECT plainto_tsquery('english', :q)"), {"q": q}).scalar()
+        return bool(value)
+    except Exception:
+        return False
 
 
 def _search_conversations_fts(
@@ -228,12 +248,13 @@ def _search_conversations_ilike(
     search_messages: bool,
 ) -> ConversationListResponse:
     """Fallback ILIKE search when full-text search is not available."""
-    search_term = f"%{q}%"
-    conditions = [Conversation.title.ilike(search_term)]
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    search_term = f"%{escaped}%"
+    conditions = [Conversation.title.ilike(search_term, escape="\\")]
     if search_messages:
         message_match = (
             db.query(Message.conversation_id)
-            .filter(Message.content.ilike(search_term))
+            .filter(Message.content.ilike(search_term, escape="\\"))
             .distinct()
             .subquery()
         )
@@ -251,7 +272,7 @@ def _search_conversations_ilike(
     offset = (page - 1) * page_size
     conversations = (
         query.order_by(
-            Conversation.title.ilike(search_term).desc(),
+            Conversation.title.ilike(search_term, escape="\\").desc(),
             Conversation.created_at.desc().nulls_last(),
         )
         .offset(offset)
@@ -347,15 +368,107 @@ def conversation_exists(
     source_id: str | None
 ) -> bool:
     """Check if a conversation with the given source and source_id already exists."""
+    return get_existing_conversation(db, source, source_id) is not None
+
+
+def get_existing_conversation(
+    db: Session,
+    source: str | None,
+    source_id: str | None,
+) -> Conversation | None:
+    """Look up a conversation by (source, source_id). Missing IDs cannot be deduped."""
     if not source or not source_id:
-        return False
+        return None
+    return (
+        db.query(Conversation)
+        .filter(Conversation.source == source, Conversation.source_id == source_id)
+        .first()
+    )
 
-    existing = db.query(Conversation).filter(
-        Conversation.source == source,
-        Conversation.source_id == source_id
-    ).first()
 
-    return existing is not None
+def _is_json_export(filename: str | None) -> bool:
+    return bool(filename and filename.lower().endswith(".json"))
+
+
+def _truncate_title(title: Any) -> str | None:
+    if title is None:
+        return None
+    return str(title)[:TITLE_MAX_LEN]
+
+
+def _ingest_parsed_conversations(
+    db: Session,
+    parsed: list[dict[str, Any]],
+    import_record: ImportHistory,
+    settings: ImportSettings | None,
+) -> tuple[list[Conversation], int, int]:
+    """Insert or merge parsed conversations according to import settings.
+
+    Returns (records, skipped_count, merged_count).
+    """
+    auto_merge = settings.auto_merge_duplicates if settings else False
+    skip_empty = settings.skip_empty_conversations if settings else True
+
+    records: list[Conversation] = []
+    skipped_count = 0
+    merged_count = 0
+
+    for item in parsed:
+        messages_data = item.pop("messages", [])
+        if skip_empty and not messages_data:
+            skipped_count += 1
+            continue
+
+        item["title"] = _truncate_title(item.get("title"))
+        item["import_history_id"] = import_record.id
+
+        existing = (
+            get_existing_conversation(db, item.get("source"), item.get("source_id"))
+            if auto_merge
+            else None
+        )
+        if existing:
+            existing.title = item.get("title") or existing.title
+            if item.get("created_at"):
+                existing.created_at = item["created_at"]
+            if item.get("updated_at"):
+                existing.updated_at = item["updated_at"]
+            existing.message_count = item.get("message_count", len(messages_data))
+            if item.get("raw_json"):
+                existing.raw_json = item["raw_json"]
+            existing.import_history_id = import_record.id
+            existing.messages.clear()
+            for msg_data in messages_data:
+                existing.messages.append(Message(**msg_data))
+            db.flush()
+            records.append(existing)
+            merged_count += 1
+            continue
+
+        convo = Conversation(**item)
+        db.add(convo)
+        db.flush()
+        for msg_data in messages_data:
+            db.add(Message(conversation_id=convo.id, **msg_data))
+        records.append(convo)
+
+    return records, skipped_count, merged_count
+
+
+def _finalize_import_record(
+    import_record: ImportHistory,
+    records: list[Conversation],
+    skipped_count: int,
+    merged_count: int,
+) -> None:
+    import_record.status = "success"
+    import_record.imported_count = len(records)
+    notes: list[str] = []
+    if merged_count:
+        notes.append(f"Updated {merged_count} existing conversation(s)")
+    if skipped_count:
+        notes.append(f"Skipped {skipped_count} empty conversation(s)")
+    import_record.error_message = "; ".join(notes) if notes else None
 
 
 # ============ Duplicate Detection Helper Functions ============
@@ -610,9 +723,10 @@ def get_analytics(
 ) -> dict[str, Any]:
     """Get detailed analytics data for the conversation insights dashboard."""
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    cutoff = (
+        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days) if days else None
+    )
     conv_cutoff_filters = [Conversation.created_at >= cutoff] if cutoff else []
-    msg_cutoff_filters = [Message.created_at >= cutoff] if cutoff else []
 
     # Totals
     total_conversations = db.query(Conversation).filter(*conv_cutoff_filters).count()
@@ -665,7 +779,8 @@ def get_analytics(
             msg_hour_expr.label("hour"),
             func.count(Message.id).label("count"),
         )
-        .filter(Message.created_at.isnot(None), *msg_cutoff_filters)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(Message.created_at.isnot(None), *conv_cutoff_filters)
         .group_by(msg_day_expr, msg_hour_expr)
         .all()
     )
@@ -813,7 +928,7 @@ async def import_chatgpt(
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
     filename = file.filename
-    if not filename or not filename.endswith(".json"):
+    if not _is_json_export(filename):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
@@ -860,49 +975,18 @@ async def import_chatgpt(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Get import settings
     settings = get_import_settings_record(db)
-    auto_merge = settings.auto_merge_duplicates if settings else False
-
-    records: list[Conversation] = []
-    skipped_count = 0
 
     try:
-        for item in parsed:
-            # Check if conversation already exists
-            source = item.get("source")
-            source_id = item.get("source_id")
-
-            if auto_merge and conversation_exists(db, source, source_id):
-                skipped_count += 1
-                continue
-
-            # Extract messages before creating conversation
-            messages_data = item.pop("messages", [])
-
-            # Add import_history_id to track this import
-            item["import_history_id"] = import_record.id
-            
-            convo = Conversation(**item)
-            db.add(convo)
-            db.flush()  # Get the conversation ID
-
-            # Add messages
-            for msg_data in messages_data:
-                message = Message(conversation_id=convo.id, **msg_data)
-                db.add(message)
-
-            records.append(convo)
+        records, skipped_count, merged_count = _ingest_parsed_conversations(
+            db, parsed, import_record, settings
+        )
 
         db.commit()
         for convo in records:
             db.refresh(convo)
 
-        # Update import record with success
-        import_record.status = "success"
-        import_record.imported_count = len(records)
-        if skipped_count > 0:
-            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
+        _finalize_import_record(import_record, records, skipped_count, merged_count)
         db.commit()
         
     except (ValueError, KeyError) as exc:
@@ -966,7 +1050,7 @@ async def import_claude(
 ) -> list[ConversationResponse]:
     """Import conversations from Claude export."""
     filename = file.filename
-    if not filename or not filename.endswith(".json"):
+    if not _is_json_export(filename):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
@@ -1011,55 +1095,28 @@ async def import_claude(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Get import settings
     settings = get_import_settings_record(db)
-    auto_merge = settings.auto_merge_duplicates if settings else False
-
-    records: list[Conversation] = []
-    skipped_count = 0
 
     try:
-        for item in parsed:
-            # Check if conversation already exists
-            source = item.get("source")
-            source_id = item.get("source_id")
-
-            if auto_merge and conversation_exists(db, source, source_id):
-                skipped_count += 1
-                continue
-
-            messages_data = item.pop("messages", [])
-            
-            # Add import_history_id to track this import
-            item["import_history_id"] = import_record.id
-            
-            convo = Conversation(**item)
-            db.add(convo)
-            db.flush()
-
-            for msg_data in messages_data:
-                message = Message(conversation_id=convo.id, **msg_data)
-                db.add(message)
-
-            records.append(convo)
+        records, skipped_count, merged_count = _ingest_parsed_conversations(
+            db, parsed, import_record, settings
+        )
 
         db.commit()
         for convo in records:
             db.refresh(convo)
 
-        import_record.status = "success"
-        import_record.imported_count = len(records)
-        if skipped_count > 0:
-            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
+        _finalize_import_record(import_record, records, skipped_count, merged_count)
         db.commit()
 
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"
-        import_record.error_message = "Import failed"
+        error_type = type(exc).__name__
+        import_record.error_message = f"{error_type}: {exc}"
         db.commit()
         logger.exception(f"Error importing Claude file {filename}")
-        raise HTTPException(status_code=500, detail="Import failed")
+        raise HTTPException(status_code=500, detail=f"Import failed: {error_type}")
 
     return records
 
@@ -1071,7 +1128,7 @@ async def import_gemini(
 ) -> list[ConversationResponse]:
     """Import conversations from Gemini/Bard export."""
     filename = file.filename
-    if not filename or not filename.endswith(".json"):
+    if not _is_json_export(filename):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
@@ -1116,55 +1173,28 @@ async def import_gemini(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Get import settings
     settings = get_import_settings_record(db)
-    auto_merge = settings.auto_merge_duplicates if settings else False
-
-    records: list[Conversation] = []
-    skipped_count = 0
 
     try:
-        for item in parsed:
-            # Check if conversation already exists
-            source = item.get("source")
-            source_id = item.get("source_id")
-
-            if auto_merge and conversation_exists(db, source, source_id):
-                skipped_count += 1
-                continue
-
-            messages_data = item.pop("messages", [])
-            
-            # Add import_history_id to track this import
-            item["import_history_id"] = import_record.id
-            
-            convo = Conversation(**item)
-            db.add(convo)
-            db.flush()
-
-            for msg_data in messages_data:
-                message = Message(conversation_id=convo.id, **msg_data)
-                db.add(message)
-
-            records.append(convo)
+        records, skipped_count, merged_count = _ingest_parsed_conversations(
+            db, parsed, import_record, settings
+        )
 
         db.commit()
         for convo in records:
             db.refresh(convo)
 
-        import_record.status = "success"
-        import_record.imported_count = len(records)
-        if skipped_count > 0:
-            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
+        _finalize_import_record(import_record, records, skipped_count, merged_count)
         db.commit()
 
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"
-        import_record.error_message = "Import failed"
+        error_type = type(exc).__name__
+        import_record.error_message = f"{error_type}: {exc}"
         db.commit()
         logger.exception(f"Error importing Gemini file {filename}")
-        raise HTTPException(status_code=500, detail="Import failed")
+        raise HTTPException(status_code=500, detail=f"Import failed: {error_type}")
 
     return records
 
@@ -1176,7 +1206,7 @@ async def import_copilot(
 ) -> list[ConversationResponse]:
     """Import conversations from GitHub Copilot export."""
     filename = file.filename
-    if not filename or not filename.endswith(".json"):
+    if not _is_json_export(filename):
         raise HTTPException(status_code=400, detail="Expected a .json export")
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
@@ -1221,55 +1251,28 @@ async def import_copilot(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Get import settings
     settings = get_import_settings_record(db)
-    auto_merge = settings.auto_merge_duplicates if settings else False
-
-    records: list[Conversation] = []
-    skipped_count = 0
 
     try:
-        for item in parsed:
-            # Check if conversation already exists
-            source = item.get("source")
-            source_id = item.get("source_id")
-
-            if auto_merge and conversation_exists(db, source, source_id):
-                skipped_count += 1
-                continue
-
-            messages_data = item.pop("messages", [])
-            
-            # Add import_history_id to track this import
-            item["import_history_id"] = import_record.id
-            
-            convo = Conversation(**item)
-            db.add(convo)
-            db.flush()
-
-            for msg_data in messages_data:
-                message = Message(conversation_id=convo.id, **msg_data)
-                db.add(message)
-
-            records.append(convo)
+        records, skipped_count, merged_count = _ingest_parsed_conversations(
+            db, parsed, import_record, settings
+        )
 
         db.commit()
         for convo in records:
             db.refresh(convo)
 
-        import_record.status = "success"
-        import_record.imported_count = len(records)
-        if skipped_count > 0:
-            import_record.error_message = f"Skipped {skipped_count} duplicate(s)"
+        _finalize_import_record(import_record, records, skipped_count, merged_count)
         db.commit()
 
     except Exception as exc:
         db.rollback()
         import_record.status = "failure"
-        import_record.error_message = "Import failed"
+        error_type = type(exc).__name__
+        import_record.error_message = f"{error_type}: {exc}"
         db.commit()
         logger.exception(f"Error importing Copilot file {filename}")
-        raise HTTPException(status_code=500, detail="Import failed")
+        raise HTTPException(status_code=500, detail=f"Import failed: {error_type}")
 
     return records
 

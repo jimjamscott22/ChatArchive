@@ -1,10 +1,28 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Query, aliased
 
 from app.models import Conversation, Tag
+
+
+def _date_to_upper_bound(date_to: datetime) -> tuple[datetime, bool]:
+    """Treat a date-only (midnight) bound as inclusive of that calendar day.
+
+    HTML date inputs and FastAPI date-only query params parse as midnight, so
+    `created_at <= 2024-01-15T00:00:00` would drop almost every conversation
+    from the selected end day. Expanding to the next midnight (exclusive)
+    includes the whole day. Explicit datetimes with a time component are kept.
+    """
+    if (
+        date_to.hour == 0
+        and date_to.minute == 0
+        and date_to.second == 0
+        and date_to.microsecond == 0
+    ):
+        return date_to + timedelta(days=1), True
+    return date_to, False
 
 
 def apply_conversation_filters(
@@ -39,6 +57,10 @@ def apply_conversation_filters(
         query = query.filter(Conversation.created_at >= date_from)
 
     if date_to is not None:
-        query = query.filter(Conversation.created_at <= date_to)
+        bound, exclusive = _date_to_upper_bound(date_to)
+        if exclusive:
+            query = query.filter(Conversation.created_at < bound)
+        else:
+            query = query.filter(Conversation.created_at <= bound)
 
     return query

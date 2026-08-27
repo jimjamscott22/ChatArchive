@@ -127,3 +127,41 @@ def test_apply_conversation_filters_supports_uncategorized_project(db_session: S
     )
 
     assert [conversation.id for conversation in query.all()] == [uncategorized.id]
+
+
+def test_apply_conversation_filters_date_to_includes_selected_day(db_session: Session):
+    apply_conversation_filters = _load_filter_helper()
+    coding = Tag(name="coding", color="#3B82F6")
+    db_session.add(coding)
+    db_session.commit()
+
+    included = Conversation(
+        source="chatgpt",
+        source_id="same-day",
+        title="same-day",
+        created_at=datetime(2024, 1, 15, 15, 30, 0),
+        updated_at=datetime(2024, 1, 15, 15, 30, 0),
+        message_count=1,
+        raw_json="{}",
+        tags=[coding],
+    )
+    next_day = Conversation(
+        source="chatgpt",
+        source_id="next-day",
+        title="next-day",
+        created_at=datetime(2024, 1, 16, 0, 0, 1),
+        updated_at=datetime(2024, 1, 16, 0, 0, 1),
+        message_count=1,
+        raw_json="{}",
+        tags=[coding],
+    )
+    db_session.add_all([included, next_day])
+    db_session.commit()
+
+    query = apply_conversation_filters(
+        db_session.query(Conversation),
+        date_from=datetime(2024, 1, 15, 0, 0, 0),
+        date_to=datetime(2024, 1, 15, 0, 0, 0),
+    )
+    assert [conversation.id for conversation in query.all()] == [included.id]
+

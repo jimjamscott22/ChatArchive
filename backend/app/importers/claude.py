@@ -4,6 +4,8 @@ import json
 from datetime import datetime
 from typing import Any
 
+from app.importers.timestamps import parse_flexible_timestamp
+
 
 def parse_claude_export(payload: Any) -> list[dict[str, Any]]:
     """
@@ -45,8 +47,8 @@ def parse_claude_export(payload: Any) -> list[dict[str, Any]]:
         
         for idx, msg in enumerate(chat_messages):
             # Claude messages have text content and sender
-            sender = msg.get("sender", "unknown")
-            role = "user" if sender == "human" else "assistant"
+            sender = str(msg.get("sender") or "unknown").lower()
+            role = "user" if sender in ("human", "user") else "assistant"
 
             # Build content from structured content blocks if available,
             # otherwise fall back to the flat "text" field (which replaces
@@ -55,7 +57,16 @@ def parse_claude_export(payload: Any) -> list[dict[str, Any]]:
             if content_blocks and isinstance(content_blocks, list):
                 content = _extract_content_from_blocks(content_blocks)
             else:
-                content = msg.get("text", "")
+                content = msg.get("text", "") or ""
+
+            # Tool-only content lists can leave the reconstructed body empty
+            # even when the visible `text` field has the reply the user saw.
+            if not content.strip():
+                content = msg.get("text", "") or ""
+
+            attachment_text = _extract_attachment_text(msg)
+            if attachment_text:
+                content = f"{content}\n\n{attachment_text}".strip() if content.strip() else attachment_text
 
             if not content.strip():
                 continue
@@ -153,21 +164,23 @@ def _artifact_type_to_lang(artifact_type: str) -> str:
     return mapping.get(artifact_type, "")
 
 
+def _extract_attachment_text(msg: dict[str, Any]) -> str:
+    """Include extracted_content from file attachments in the human turn."""
+    attachments = msg.get("attachments") or msg.get("files") or []
+    if not isinstance(attachments, list):
+        return ""
+    parts: list[str] = []
+    for att in attachments:
+        if not isinstance(att, dict):
+            continue
+        extracted = att.get("extracted_content") or att.get("extracted") or att.get("text") or ""
+        if not extracted:
+            continue
+        name = att.get("file_name") or att.get("filename") or att.get("name") or "attachment"
+        parts.append(f"[{name}]\n{extracted}")
+    return "\n\n".join(parts)
+
+
 def parse_timestamp(timestamp: Any) -> datetime | None:
     """Parse various timestamp formats used by Claude."""
-    if not timestamp:
-        return None
-    
-    try:
-        # Try ISO format first
-        if isinstance(timestamp, str):
-            # Remove timezone suffix if present
-            timestamp = timestamp.replace("Z", "+00:00")
-            return datetime.fromisoformat(timestamp.replace("+00:00", ""))
-        # Try Unix timestamp
-        elif isinstance(timestamp, (int, float)):
-            return datetime.fromtimestamp(timestamp)
-    except (ValueError, OSError, TypeError):
-        pass
-    
-    return None
+    return parse_flexible_timestamp(timestamp)

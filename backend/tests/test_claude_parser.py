@@ -267,3 +267,71 @@ def test_parse_claude_multiple_conversations():
     assert len(result) == 2
     assert result[0]["title"] == "First"
     assert result[1]["title"] == "Second"
+
+
+def test_parse_claude_export_user_sender_is_user():
+    payload = [
+        {
+            "uuid": "conv",
+            "name": "User sender",
+            "chat_messages": [
+                {"uuid": "m1", "sender": "user", "text": "Hello from user"},
+                {"uuid": "m2", "sender": "assistant", "text": "Hello back"},
+            ],
+        }
+    ]
+    result = parse_claude_export(payload)
+    assert result[0]["messages"][0]["role"] == "user"
+    assert result[0]["messages"][1]["role"] == "assistant"
+
+
+def test_parse_claude_export_includes_attachment_text():
+    payload = [
+        {
+            "uuid": "conv",
+            "name": "PDF chat",
+            "chat_messages": [
+                {
+                    "uuid": "m1",
+                    "sender": "human",
+                    "text": "",
+                    "attachments": [
+                        {
+                            "file_name": "notes.pdf",
+                            "extracted_content": "Invoice total 42",
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    result = parse_claude_export(payload)
+    assert len(result[0]["messages"]) == 1
+    assert "Invoice total 42" in result[0]["messages"][0]["content"]
+
+
+def test_parse_claude_export_falls_back_to_text_when_blocks_empty():
+    payload = [
+        {
+            "uuid": "conv",
+            "name": "Tool reply",
+            "chat_messages": [
+                {
+                    "uuid": "m1",
+                    "sender": "assistant",
+                    "text": "The actual visible reply",
+                    "content": [{"type": "tool_result", "content": "ignored"}],
+                }
+            ],
+        }
+    ]
+    result = parse_claude_export(payload)
+    assert result[0]["messages"][0]["content"] == "The actual visible reply"
+
+
+def test_parse_timestamp_negative_offset():
+    result = parse_timestamp("2024-01-01T12:00:00-05:00")
+    assert result is not None
+    assert result.hour == 17
+    assert result.tzinfo is None
+

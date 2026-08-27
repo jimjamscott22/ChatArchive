@@ -372,3 +372,88 @@ def test_parse_chatgpt_export_rejects_repeated_node_reference():
     }
 
     _assert_cyclic_mapping_is_rejected(mapping)
+
+
+def test_parse_message_null_content_is_skipped():
+    message = {
+        "id": "msg1",
+        "author": {"role": "user"},
+        "content": None,
+        "metadata": {},
+    }
+    assert parse_message(message, 0) is None
+    # Null content is skipped at parse time rather than crashing import.
+
+
+def test_parse_message_uses_content_text_without_parts():
+    message = {
+        "id": "msg1",
+        "author": {"role": "assistant"},
+        "content": {"content_type": "code", "text": "print('hello')"},
+        "metadata": {},
+    }
+    result = parse_message(message, 0)
+    assert result is not None
+    assert result["content"] == "print('hello')"
+
+
+def test_parse_message_dict_parts_text():
+    message = {
+        "id": "msg1",
+        "author": {"role": "user"},
+        "content": {
+            "content_type": "multimodal_text",
+            "parts": [{"text": "voice transcript"}],
+        },
+        "metadata": {},
+    }
+    result = parse_message(message, 0)
+    assert result is not None
+    assert result["content"] == "voice transcript"
+
+
+def test_extract_messages_null_children_does_not_crash():
+    mapping = {
+        "root": {"parent": None, "children": ["msg1"], "message": None},
+        "msg1": {
+            "parent": "root",
+            "children": None,
+            "message": {
+                "author": {"role": "user"},
+                "content": {"content_type": "text", "parts": ["Hello"]},
+                "metadata": {},
+            },
+        },
+    }
+    result = extract_messages_from_mapping(mapping)
+    assert len(result) == 1
+    assert result[0]["content"] == "Hello"
+
+
+def test_chatgpt_timestamps_are_naive_utc():
+    payload = {
+        "conversations": [
+            {
+                "id": "conv-utc",
+                "title": "UTC",
+                "create_time": 1704067200.0,
+                "mapping": {
+                    "root": {"parent": None, "children": ["msg1"], "message": None},
+                    "msg1": {
+                        "parent": "root",
+                        "children": [],
+                        "message": {
+                            "author": {"role": "user"},
+                            "create_time": 1704067200.0,
+                            "content": {"content_type": "text", "parts": ["Hi"]},
+                            "metadata": {},
+                        },
+                    },
+                },
+            }
+        ]
+    }
+    result = parse_chatgpt_export(payload)
+    created = result[0]["created_at"]
+    assert created.tzinfo is None
+    assert created == datetime(2024, 1, 1, 0, 0, 0)
