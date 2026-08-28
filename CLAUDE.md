@@ -174,6 +174,16 @@ prompts for it once and stores it in the browser's `localStorage`.
 
 ## Gotchas
 
+- **Windows development startup uses the managed uv environment.** Run
+  `\.\scripts\dev.ps1` from the repository root; it runs `uv sync` and starts
+  the backend with `uv run`. Do not activate a manually assumed
+  `backend\.venv` path unless it exists. The Windows launcher invokes
+  `npm.cmd` because `npm` may resolve to a PowerShell shim that
+  `Start-Process` cannot execute.
+- **`APP_API_TOKEN` is required for startup.** Add a token to `backend/.env`
+  before starting the backend. From the repository root, generate one with:
+  `\$token = uv run --directory backend python -c "import secrets; print(secrets.token_hex(32))"; Add-Content backend/.env "APP_API_TOKEN=\$token"`
+
 - **`database.py` connects at import time.** `engine, DATABASE_MODE = _init_engine()`
   runs at module scope and raises `RuntimeError` if Supabase is unreachable or
   unconfigured. Importing `app.main` (or anything importing `app.database`) therefore
