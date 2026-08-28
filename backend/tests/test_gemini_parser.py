@@ -1,6 +1,7 @@
 """Unit tests for Gemini parser."""
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from app.importers.gemini import (
     parse_gemini_export,
@@ -399,4 +400,148 @@ def test_parse_timestamp_negative_offset():
     result = parse_timestamp("2024-01-01T12:00:00-05:00")
     assert result is not None
     assert result.hour == 17
+
+
+def test_parse_gemini_apps_activity_details_request_response():
+    payload = [
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "titleUrl": "https://gemini.google.com/app/c/abc123",
+            "time": "2024-02-17T22:05:10.123Z",
+            "products": ["Gemini Apps"],
+            "details": [
+                {"name": "Request", "value": "What is photosynthesis?"},
+                {"name": "Response", "value": "Photosynthesis is how plants make food."},
+            ],
+        }
+    ]
+
+    result = parse_gemini_export(payload)
+    assert len(result) == 1
+    conv = result[0]
+    assert conv["source"] == "gemini"
+    assert conv["source_id"] == "abc123"
+    assert conv["title"] == "What is photosynthesis?"
+    assert len(conv["messages"]) == 2
+    assert conv["messages"][0]["role"] == "user"
+    assert conv["messages"][0]["content"] == "What is photosynthesis?"
+    assert conv["messages"][1]["role"] == "assistant"
+    assert "Photosynthesis" in conv["messages"][1]["content"]
+
+
+def test_parse_gemini_apps_activity_user_interactions():
+    payload = [
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "titleUrl": "https://gemini.google.com/app/xyz789",
+            "time": "2024-03-01T10:00:00.000Z",
+            "products": ["Gemini Apps"],
+            "userInteractions": [
+                {
+                    "userInteraction": json.dumps({
+                        "request": "Summarize this article",
+                        "response": "The article argues that...",
+                    })
+                }
+            ],
+        }
+    ]
+
+    result = parse_gemini_export(payload)
+    assert len(result) == 1
+    assert result[0]["source_id"] == "xyz789"
+    assert [msg["content"] for msg in result[0]["messages"]] == [
+        "Summarize this article",
+        "The article argues that...",
+    ]
+
+
+def test_parse_gemini_apps_activity_title_only():
+    payload = [
+        {
+            "header": "Gemini",
+            "title": "Prompted Gemini Apps to write a haiku about rain",
+            "time": "2024-04-01T08:00:00.000Z",
+            "products": ["Gemini Apps"],
+        }
+    ]
+
+    result = parse_gemini_export(payload)
+    assert len(result) == 1
+    conv = result[0]
+    assert conv["source_id"] is None
+    assert conv["title"] == "write a haiku about rain"
+    assert len(conv["messages"]) == 1
+    assert conv["messages"][0]["role"] == "user"
+    assert conv["messages"][0]["content"] == "write a haiku about rain"
+
+
+def test_parse_gemini_apps_activity_empty_details_has_no_messages():
+    payload = [
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "time": "2024-06-01T00:00:00.000Z",
+            "products": ["Gemini Apps"],
+        }
+    ]
+    result = parse_gemini_export(payload)
+    assert len(result) == 1
+    assert result[0]["messages"] == []
+    assert result[0]["message_count"] == 0
+
+
+def test_parse_gemini_apps_activity_groups_by_title_url():
+    payload = [
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "titleUrl": "https://gemini.google.com/app/c/thread1",
+            "time": "2024-05-01T12:00:02.000Z",
+            "products": ["Gemini Apps"],
+            "details": [
+                {"name": "Request", "value": "Follow up question"},
+                {"name": "Response", "value": "Follow up answer"},
+            ],
+        },
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "titleUrl": "https://gemini.google.com/app/c/thread1",
+            "time": "2024-05-01T12:00:00.000Z",
+            "products": ["Gemini Apps"],
+            "details": [
+                {"name": "Request", "value": "First question"},
+                {"name": "Response", "value": "First answer"},
+            ],
+        },
+        {
+            "header": "Gemini",
+            "title": "Used Gemini Apps",
+            "titleUrl": "https://gemini.google.com/u/0/app/other-thread",
+            "time": "2024-05-01T13:00:00.000Z",
+            "products": ["Gemini Apps"],
+            "details": [
+                {"name": "Prompt", "value": "Separate chat"},
+            ],
+        },
+    ]
+
+    result = parse_gemini_export(payload)
+    by_id = {conv["source_id"]: conv for conv in result}
+    assert set(by_id) == {"thread1", "other-thread"}
+
+    thread = by_id["thread1"]
+    assert [msg["content"] for msg in thread["messages"]] == [
+        "First question",
+        "First answer",
+        "Follow up question",
+        "Follow up answer",
+    ]
+    assert thread["title"] == "First question"
+
+    other = by_id["other-thread"]
+    assert [msg["content"] for msg in other["messages"]] == ["Separate chat"]
 
