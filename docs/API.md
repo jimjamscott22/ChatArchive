@@ -382,11 +382,13 @@ Get details for a specific import history record.
 
 Get current import settings.
 
+`allowed_formats` is a comma-separated extension allowlist. Only JSON import is implemented; uploads that are not `.json`, or whose extension is omitted from the list, are rejected with HTTP 400. `keep_separate` disables duplicate merging even when `auto_merge_duplicates` is true.
+
 **Response:**
 ```json
 {
   "id": 1,
-  "allowed_formats": "json,csv,xml",
+  "allowed_formats": "json",
   "default_format": "json",
   "auto_merge_duplicates": false,
   "keep_separate": true,
@@ -403,7 +405,7 @@ Update import settings.
 **Request Body** (all fields optional):
 ```json
 {
-  "allowed_formats": "json,csv,xml",
+  "allowed_formats": "json",
   "default_format": "json",
   "auto_merge_duplicates": false,
   "keep_separate": true,
@@ -415,7 +417,7 @@ Update import settings.
 ```json
 {
   "id": 1,
-  "allowed_formats": "json,csv,xml",
+  "allowed_formats": "json",
   "default_format": "json",
   "auto_merge_duplicates": false,
   "keep_separate": true,

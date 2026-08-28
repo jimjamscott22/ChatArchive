@@ -6,58 +6,94 @@ from typing import Any
 from app.importers.timestamps import parse_unix_timestamp
 
 
-def extract_messages_from_mapping(mapping: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Extract messages from ChatGPT's tree-based mapping structure.
-    Traverses parent->child relationships to get messages in order.
+_CYCLE_ERROR = "Invalid ChatGPT mapping: cycle or repeated node reference"
+
+
+def extract_messages_from_mapping(
+    mapping: dict[str, Any],
+    current_node: str | None = None,
+) -> list[dict[str, Any]]:
+    """Extract messages from ChatGPT's tree-based mapping.
+
+    When ``current_node`` is present in the mapping, only that selected
+    branch is imported (parent chain from the leaf to the root). Otherwise
+    the last-child path from the root is used — ChatGPT typically appends
+    the latest regeneration last. Sibling branches are not flattened.
     """
     if not mapping:
         return []
 
-    # Find root node (has no parent or parent is null)
-    root_id = None
+    path_ids = _selected_mapping_path(mapping, current_node)
+    messages: list[dict[str, Any]] = []
+    order = 0
+    for node_id in path_ids:
+        node = mapping.get(node_id)
+        if not node or not isinstance(node, dict):
+            continue
+        message = node.get("message")
+        if message and should_include_message(message):
+            msg_data = parse_message(message, order)
+            if msg_data:
+                messages.append(msg_data)
+                order += 1
+    return messages
+
+
+def _find_root_id(mapping: dict[str, Any]) -> str:
     for node_id, node in mapping.items():
         if not isinstance(node, dict):
             continue
         if node.get("parent") is None:
-            root_id = node_id
+            return node_id
+    return list(mapping.keys())[0]
+
+
+def _selected_mapping_path(
+    mapping: dict[str, Any],
+    current_node: str | None,
+) -> list[str]:
+    if current_node and current_node in mapping:
+        return _parent_chain_path(mapping, current_node)
+    return _last_child_path(mapping, _find_root_id(mapping))
+
+
+def _parent_chain_path(mapping: dict[str, Any], leaf_id: str) -> list[str]:
+    chain: list[str] = []
+    visited: set[str] = set()
+    node_id: Any = leaf_id
+    while node_id:
+        if node_id in visited:
+            raise ValueError(_CYCLE_ERROR)
+        visited.add(node_id)
+        chain.append(node_id)
+        node = mapping.get(node_id)
+        if not node or not isinstance(node, dict):
             break
+        parent = node.get("parent")
+        if parent is None:
+            break
+        node_id = parent
+    chain.reverse()
+    return chain
 
-    if not root_id:
-        # Fallback: just iterate through all nodes
-        root_id = list(mapping.keys())[0]
 
-    def _traverse_iterative(node_id: str, mapping: dict) -> list:
-        messages = []
-        order = 0
-        visited: set[str] = set()
-        stack = [node_id]
-        while stack:
-            current_id = stack.pop()
-            if current_id in visited:
-                raise ValueError(
-                    "Invalid ChatGPT mapping: cycle or repeated node reference"
-                )
-            visited.add(current_id)
-
-            node = mapping.get(current_id)
-            if not node or not isinstance(node, dict):
-                continue
-            message = node.get("message")
-            if message and should_include_message(message):
-                msg_data = parse_message(message, order)
-                if msg_data:
-                    messages.append(msg_data)
-                    order += 1
-            children = node.get("children") or []
-            if not isinstance(children, list):
-                children = []
-            # push children in reverse order so first child is processed first
-            for child_id in reversed(children):
-                stack.append(child_id)
-        return messages
-
-    return _traverse_iterative(root_id, mapping)
+def _last_child_path(mapping: dict[str, Any], root_id: str) -> list[str]:
+    path: list[str] = []
+    visited: set[str] = set()
+    current_id: Any = root_id
+    while current_id:
+        if current_id in visited:
+            raise ValueError(_CYCLE_ERROR)
+        visited.add(current_id)
+        path.append(current_id)
+        node = mapping.get(current_id)
+        if not node or not isinstance(node, dict):
+            break
+        children = node.get("children") or []
+        if not isinstance(children, list) or not children:
+            break
+        current_id = children[-1]
+    return path
 
 
 def should_include_message(message: dict[str, Any]) -> bool:
@@ -186,7 +222,10 @@ def parse_chatgpt_export(payload: Any) -> list[dict[str, Any]]:
         mapping = item.get("mapping") or {}
         if not isinstance(mapping, dict):
             mapping = {}
-        messages = extract_messages_from_mapping(mapping)
+        messages = extract_messages_from_mapping(
+            mapping,
+            current_node=item.get("current_node"),
+        )
 
         parsed.append({
             "source": "chatgpt",

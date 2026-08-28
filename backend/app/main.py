@@ -30,6 +30,7 @@ from app.models import Base, Conversation, Message, ImportHistory, ImportSetting
 from app.supabase_client import get_connection_info, get_dashboard_url, is_supabase_configured
 from app.storage import upload_export_file, list_storage_files
 from app.query_filters import apply_conversation_filters
+from app.import_policy import import_filename_rejection, should_auto_merge
 from app.schemas import (
     ConversationResponse,
     ConversationDetail,
@@ -386,8 +387,13 @@ def get_existing_conversation(
     )
 
 
-def _is_json_export(filename: str | None) -> bool:
-    return bool(filename and filename.lower().endswith(".json"))
+def _assert_import_file_allowed(filename: str | None, db: Session) -> ImportSettings | None:
+    settings = get_import_settings_record(db)
+    allowed = settings.allowed_formats if settings else "json"
+    detail = import_filename_rejection(filename, allowed)
+    if detail:
+        raise HTTPException(status_code=400, detail=detail)
+    return settings
 
 
 def _truncate_title(title: Any) -> str | None:
@@ -406,7 +412,11 @@ def _ingest_parsed_conversations(
 
     Returns (records, skipped_count, merged_count).
     """
-    auto_merge = settings.auto_merge_duplicates if settings else False
+    auto_merge = (
+        should_auto_merge(settings.auto_merge_duplicates, settings.keep_separate)
+        if settings
+        else False
+    )
     skip_empty = settings.skip_empty_conversations if settings else True
 
     records: list[Conversation] = []
@@ -928,8 +938,7 @@ async def import_chatgpt(
     db: Session = Depends(get_db),
 ) -> list[ConversationResponse]:
     filename = file.filename
-    if not _is_json_export(filename):
-        raise HTTPException(status_code=400, detail="Expected a .json export")
+    settings = _assert_import_file_allowed(filename, db)
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
     if len(raw) > MAX_IMPORT_BYTES:
@@ -974,8 +983,6 @@ async def import_chatgpt(
         import_record.error_message = str(exc)
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    settings = get_import_settings_record(db)
 
     try:
         records, skipped_count, merged_count = _ingest_parsed_conversations(
@@ -1050,8 +1057,7 @@ async def import_claude(
 ) -> list[ConversationResponse]:
     """Import conversations from Claude export."""
     filename = file.filename
-    if not _is_json_export(filename):
-        raise HTTPException(status_code=400, detail="Expected a .json export")
+    settings = _assert_import_file_allowed(filename, db)
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
     if len(raw) > MAX_IMPORT_BYTES:
@@ -1095,8 +1101,6 @@ async def import_claude(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    settings = get_import_settings_record(db)
-
     try:
         records, skipped_count, merged_count = _ingest_parsed_conversations(
             db, parsed, import_record, settings
@@ -1128,8 +1132,7 @@ async def import_gemini(
 ) -> list[ConversationResponse]:
     """Import conversations from Gemini/Bard export."""
     filename = file.filename
-    if not _is_json_export(filename):
-        raise HTTPException(status_code=400, detail="Expected a .json export")
+    settings = _assert_import_file_allowed(filename, db)
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
     if len(raw) > MAX_IMPORT_BYTES:
@@ -1173,8 +1176,6 @@ async def import_gemini(
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    settings = get_import_settings_record(db)
-
     try:
         records, skipped_count, merged_count = _ingest_parsed_conversations(
             db, parsed, import_record, settings
@@ -1206,8 +1207,7 @@ async def import_copilot(
 ) -> list[ConversationResponse]:
     """Import conversations from GitHub Copilot export."""
     filename = file.filename
-    if not _is_json_export(filename):
-        raise HTTPException(status_code=400, detail="Expected a .json export")
+    settings = _assert_import_file_allowed(filename, db)
 
     raw = await file.read(MAX_IMPORT_BYTES + 1)
     if len(raw) > MAX_IMPORT_BYTES:
@@ -1250,8 +1250,6 @@ async def import_copilot(
         import_record.error_message = str(exc)
         db.commit()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    settings = get_import_settings_record(db)
 
     try:
         records, skipped_count, merged_count = _ingest_parsed_conversations(
@@ -1386,7 +1384,7 @@ def get_import_settings(db: Session = Depends(get_db)) -> ImportSettingsResponse
     # Create default settings if none exist
     if not settings:
         settings = ImportSettings(
-            allowed_formats="json,csv,xml",
+            allowed_formats="json",
             default_format="json",
             auto_merge_duplicates=False,
             keep_separate=True,

@@ -48,6 +48,28 @@ function installFetchMock(options: FetchMockOptions = {}) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
+    if (url.includes("/settings/import")) {
+      return jsonResponse({
+        id: 1,
+        allowed_formats: "json",
+        default_format: "json",
+        auto_merge_duplicates: false,
+        keep_separate: true,
+        skip_empty_conversations: true,
+        updated_at: "2026-03-18T12:00:00Z",
+      });
+    }
+
+    if (url.includes("/import/history")) {
+      return jsonResponse({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 20,
+        pages: 0,
+      });
+    }
+
     if (url.includes("/settings/supabase-dashboard-url")) {
       return jsonResponse({ configured: false, dashboard_url: null });
     }
@@ -229,5 +251,33 @@ describe("App UI improvements", () => {
 
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(localStorage.getItem("chatarchive-theme")).toBe("light");
+  });
+
+  it("makes auto-merge and keep-separate mutually exclusive in import settings", async () => {
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^settings$/i }));
+    const dialog = await screen.findByRole("dialog", { name: /import & export settings/i });
+
+    expect(within(dialog).getByText(/only json imports are supported/i)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("option", { name: "CSV" })).not.toBeInTheDocument();
+
+    const autoMerge = within(dialog).getByRole("checkbox", {
+      name: /auto-merge duplicate conversations/i,
+    });
+    const keepSeparate = within(dialog).getByRole("checkbox", {
+      name: /keep imported data separate/i,
+    });
+
+    expect(autoMerge).not.toBeChecked();
+    expect(keepSeparate).toBeChecked();
+
+    fireEvent.click(autoMerge);
+    expect(autoMerge).toBeChecked();
+    expect(keepSeparate).not.toBeChecked();
+
+    fireEvent.click(keepSeparate);
+    expect(keepSeparate).toBeChecked();
+    expect(autoMerge).not.toBeChecked();
   });
 });

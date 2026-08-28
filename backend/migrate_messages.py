@@ -82,7 +82,10 @@ def migrate_messages():
                 # Handle different sources
                 if convo.source == "chatgpt":
                     mapping = data.get("mapping", {})
-                    messages = extract_messages_from_mapping(mapping)
+                    messages = extract_messages_from_mapping(
+                        mapping,
+                        current_node=data.get("current_node"),
+                    )
                 else:
                     # Skip unsupported sources for now
                     messages = []
