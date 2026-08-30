@@ -239,7 +239,7 @@ def test_extract_messages_from_mapping_empty():
 
 
 def test_extract_messages_from_mapping_tree():
-    """Test extract_messages_from_mapping with tree structure."""
+    """Only the current_node branch is imported, not the full mapping tree."""
     mapping = {
         "root": {
             "id": "root",
@@ -281,14 +281,57 @@ def test_extract_messages_from_mapping_tree():
             }
         }
     }
-    
+
+    selected = extract_messages_from_mapping(mapping, current_node="msg2")
+    assert [msg["content"] for msg in selected] == ["Message 1", "Message 2"]
+
+    other_branch = extract_messages_from_mapping(mapping, current_node="msg3")
+    assert [msg["content"] for msg in other_branch] == ["Message 3"]
+
+
+def test_extract_messages_from_mapping_last_child_without_current_node():
+    """Missing current_node follows the last-child path (latest regeneration)."""
+    mapping = {
+        "root": {
+            "id": "root",
+            "parent": None,
+            "children": ["msg1", "msg3"],
+            "message": None,
+        },
+        "msg1": {
+            "id": "msg1",
+            "parent": "root",
+            "children": ["msg2"],
+            "message": {
+                "author": {"role": "user"},
+                "content": {"content_type": "text", "parts": ["Message 1"]},
+                "metadata": {},
+            },
+        },
+        "msg2": {
+            "id": "msg2",
+            "parent": "msg1",
+            "children": [],
+            "message": {
+                "author": {"role": "assistant"},
+                "content": {"content_type": "text", "parts": ["Message 2"]},
+                "metadata": {},
+            },
+        },
+        "msg3": {
+            "id": "msg3",
+            "parent": "root",
+            "children": [],
+            "message": {
+                "author": {"role": "user"},
+                "content": {"content_type": "text", "parts": ["Message 3"]},
+                "metadata": {},
+            },
+        },
+    }
+
     result = extract_messages_from_mapping(mapping)
-    
-    # Should extract messages in depth-first order
-    assert len(result) == 3
-    assert result[0]["content"] == "Message 1"
-    assert result[1]["content"] == "Message 2"
-    assert result[2]["content"] == "Message 3"
+    assert [msg["content"] for msg in result] == ["Message 3"]
 
 
 def _assert_cyclic_mapping_is_rejected(mapping: dict) -> None:
@@ -346,8 +389,44 @@ def test_parse_chatgpt_export_rejects_multi_node_cycle():
     _assert_cyclic_mapping_is_rejected(mapping)
 
 
-def test_parse_chatgpt_export_rejects_repeated_node_reference():
-    """A shared child must not be processed twice through separate branches."""
+def test_parse_chatgpt_export_rejects_parent_cycle():
+    """A cycle on the parent chain from current_node must be rejected."""
+    mapping = {
+        "root": {
+            "parent": "child",
+            "children": ["child"],
+            "message": None,
+        },
+        "child": {
+            "parent": "root",
+            "children": [],
+            "message": None,
+        },
+    }
+
+    script = (
+        "from app.importers.chatgpt import parse_chatgpt_export; "
+        f"parse_chatgpt_export([{{'id': 'test', 'current_node': 'child', 'mapping': {mapping!r}}}])"
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("cyclic ChatGPT parent chain did not terminate within two seconds")
+
+    assert completed.returncode != 0
+    assert "ValueError" in completed.stderr
+    assert "cycle or repeated node reference" in completed.stderr
+
+
+def test_parse_chatgpt_export_last_child_ignores_unused_sibling():
+    """Without current_node, a shared/sibling branch is not visited."""
     mapping = {
         "root": {
             "parent": None,
@@ -357,21 +436,34 @@ def test_parse_chatgpt_export_rejects_repeated_node_reference():
         "left": {
             "parent": "root",
             "children": ["shared"],
-            "message": None,
+            "message": {
+                "author": {"role": "user"},
+                "content": {"content_type": "text", "parts": ["Left"]},
+                "metadata": {},
+            },
         },
         "right": {
             "parent": "root",
-            "children": ["shared"],
-            "message": None,
+            "children": [],
+            "message": {
+                "author": {"role": "user"},
+                "content": {"content_type": "text", "parts": ["Right"]},
+                "metadata": {},
+            },
         },
         "shared": {
             "parent": "left",
             "children": [],
-            "message": None,
+            "message": {
+                "author": {"role": "assistant"},
+                "content": {"content_type": "text", "parts": ["Shared"]},
+                "metadata": {},
+            },
         },
     }
 
-    _assert_cyclic_mapping_is_rejected(mapping)
+    result = parse_chatgpt_export([{"id": "test", "mapping": mapping}])
+    assert [msg["content"] for msg in result[0]["messages"]] == ["Right"]
 
 
 def test_parse_message_null_content_is_skipped():

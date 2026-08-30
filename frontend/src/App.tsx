@@ -2768,6 +2768,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         'Deselect all products, then select only "Gemini Apps Activity"',
         'Choose JSON format and create export',
         'Wait for the download link, then download and extract',
+        'Import Takeout/My Activity/Gemini Apps/MyActivity.json',
       ],
     },
     copilot: {
@@ -2953,9 +2954,15 @@ function SettingsModal({
   };
 
   const updateSetting = <K extends keyof ImportSettings>(key: K, value: ImportSettings[K]) => {
-    if (settings) {
-      setSettings({ ...settings, [key]: value });
+    if (!settings) return;
+    const next: ImportSettings = { ...settings, [key]: value };
+    if (key === "auto_merge_duplicates" && value === true) {
+      next.keep_separate = false;
     }
+    if (key === "keep_separate" && value === true) {
+      next.auto_merge_duplicates = false;
+    }
+    setSettings(next);
   };
 
   const handleDeleteImport = async (historyId: number) => {
@@ -3047,9 +3054,9 @@ function SettingsModal({
                   type="text"
                   value={settings.allowed_formats}
                   onChange={(e) => updateSetting('allowed_formats', e.target.value)}
-                  placeholder="json,csv,xml"
+                  placeholder="json"
                 />
-                <small>Supported: json, csv, xml</small>
+                <small>Only JSON imports are supported. Files whose extension is not in this list are rejected.</small>
               </div>
               <div className="form-group">
                 <label>Default Format:</label>
@@ -3058,8 +3065,6 @@ function SettingsModal({
                   onChange={(e) => updateSetting('default_format', e.target.value)}
                 >
                   <option value="json">JSON</option>
-                  <option value="csv">CSV</option>
-                  <option value="xml">XML</option>
                 </select>
               </div>
             </div>
@@ -3075,7 +3080,7 @@ function SettingsModal({
                   />
                   Auto-merge duplicate conversations
                 </label>
-                <small>Automatically merge imported conversations with existing ones if they have the same source ID</small>
+                <small>Automatically merge imported conversations with existing ones if they have the same source ID. Turns off keep-separate.</small>
               </div>
               <div className="form-group checkbox">
                 <label>
@@ -3086,7 +3091,7 @@ function SettingsModal({
                   />
                   Keep imported data separate
                 </label>
-                <small>Create separate archives for each import instead of merging with existing data</small>
+                <small>Do not merge by source ID even if auto-merge is enabled. New imports are added as distinct conversations.</small>
               </div>
               <div className="form-group checkbox">
                 <label>

@@ -207,6 +207,7 @@ def test_all_parsers_skip_empty_messages():
     # ChatGPT
     chatgpt_data = [{
         "id": "test",
+        "current_node": "msg1",
         "mapping": {
             "root": {"id": "root", "parent": None, "children": ["msg1", "msg2"], "message": None},
             "msg1": {

@@ -73,7 +73,7 @@ class ImportHistory(Base):
     filename: Mapped[str] = mapped_column(String(255))
     source_location: Mapped[str | None] = mapped_column(String(500))  # File path or URL
     source_type: Mapped[str] = mapped_column(String(50), index=True)  # chatgpt, claude, etc.
-    file_format: Mapped[str] = mapped_column(String(50))  # json, csv, xml
+    file_format: Mapped[str] = mapped_column(String(50))  # json
     status: Mapped[str] = mapped_column(String(50), index=True)  # success, failure, partial
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     imported_count: Mapped[int] = mapped_column(Integer, default=0)  # Number of conversations imported
@@ -90,7 +90,7 @@ class ImportSettings(Base):
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     # File format preferences
-    allowed_formats: Mapped[str] = mapped_column(String(255), default="json,csv,xml")  # Comma-separated
+    allowed_formats: Mapped[str] = mapped_column(String(255), default="json")  # Comma-separated extensions
     default_format: Mapped[str] = mapped_column(String(50), default="json")
     
     # Import behavior

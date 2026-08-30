@@ -4,26 +4,30 @@ $rootDir = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $rootDir "backend"
 $frontendDir = Join-Path $rootDir "frontend"
 
-$pythonCmd = "python"
-if (-not (Get-Command $pythonCmd -ErrorAction SilentlyContinue)) {
-  if (Get-Command "py" -ErrorAction SilentlyContinue) {
-    $pythonCmd = "py"
-  } else {
-    Write-Error "Python not found. Install Python 3.10+ or ensure python/py is in PATH."
-    exit 1
-  }
+ $uv = Get-Command "uv" -ErrorAction SilentlyContinue
+if (-not $uv) {
+  Write-Error "uv not found. Install uv to manage the backend environment."
+  exit 1
 }
 
-if (-not (Get-Command "npm" -ErrorAction SilentlyContinue)) {
+$npm = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+if (-not $npm) {
   Write-Error "npm not found. Install Node.js 18+ and ensure npm is in PATH."
   exit 1
 }
 
+Write-Host "Syncing backend dependencies..."
+& $uv.Source sync --directory $backendDir
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "Backend dependency sync failed."
+  exit $LASTEXITCODE
+}
+
 Write-Host "Starting backend..."
-$backend = Start-Process -FilePath $pythonCmd -ArgumentList "-m", "app.main" -WorkingDirectory $backendDir -NoNewWindow -PassThru
+$backend = Start-Process -FilePath $uv.Source -ArgumentList "run", "python", "-m", "app.main" -WorkingDirectory $backendDir -NoNewWindow -PassThru
 
 Write-Host "Starting frontend..."
-$frontend = Start-Process -FilePath "npm" -ArgumentList "run", "dev" -WorkingDirectory $frontendDir -NoNewWindow -PassThru
+$frontend = Start-Process -FilePath $npm.Source -ArgumentList "run", "dev" -WorkingDirectory $frontendDir -NoNewWindow -PassThru
 
 try {
   Wait-Process -Id $backend.Id, $frontend.Id
