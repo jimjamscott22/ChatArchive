@@ -148,6 +148,15 @@ function installFetchMock(options: FetchMockOptions = {}) {
 describe("App UI improvements", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    
+    // Polyfill HTMLDialogElement for jsdom
+    HTMLDialogElement.prototype.showModal = vi.fn(function mock(this: HTMLDialogElement) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function mock(this: HTMLDialogElement) {
+      this.open = false;
+    });
+
     localStorage.setItem("chatarchive_api_token", "test-token");
     localStorage.removeItem("chatarchive-theme");
     installFetchMock();

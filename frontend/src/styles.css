@@ -658,13 +658,21 @@ body {
   bottom: 0;
   pointer-events: none;
   z-index: 0;
-  /* Aged paper grain texture */
-  background-image: repeating-linear-gradient(
+  /* Aged paper grain texture using CSS masks */
+  background-color: var(--texture-line);
+  -webkit-mask-image: repeating-linear-gradient(
     0deg,
     transparent,
     transparent 28px,
-    var(--texture-line) 28px,
-    var(--texture-line) 29px
+    #000 28px,
+    #000 29px
+  );
+  mask-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 28px,
+    #000 28px,
+    #000 29px
   );
 }
 
@@ -706,18 +714,25 @@ body {
   flex-direction: column;
 }
 
-.sidebar-scroll-area::-webkit-scrollbar {
-  width: 4px;
+.sidebar-scroll-area {
+  scrollbar-color: var(--accent) transparent;
+  scrollbar-width: thin;
 }
 
-.sidebar-scroll-area::-webkit-scrollbar-track {
-  background: transparent;
-}
+@supports not (scrollbar-color: auto) {
+  .sidebar-scroll-area::-webkit-scrollbar {
+    width: 4px;
+  }
 
-.sidebar-scroll-area::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  opacity: 0.4;
-  border-radius: 2px;
+  .sidebar-scroll-area::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebar-scroll-area::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    opacity: 0.4;
+    border-radius: 2px;
+  }
 }
 
 .logo {
@@ -1212,17 +1227,24 @@ body {
   color: var(--text-muted);
 }
 
-.conversations-list::-webkit-scrollbar {
-  width: 6px;
+.conversations-list {
+  scrollbar-color: var(--border-color) transparent;
+  scrollbar-width: thin;
 }
 
-.conversations-list::-webkit-scrollbar-track {
-  background: transparent;
-}
+@supports not (scrollbar-color: auto) {
+  .conversations-list::-webkit-scrollbar {
+    width: 6px;
+  }
 
-.conversations-list::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
+  .conversations-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .conversations-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+  }
 }
 
 .conversation-card {
@@ -1247,12 +1269,20 @@ body {
   right: 0;
   bottom: 0;
   border-radius: 2px;
-  background: repeating-linear-gradient(
+  background-color: var(--texture-line);
+  -webkit-mask-image: repeating-linear-gradient(
     0deg,
     transparent,
     transparent 22px,
-    var(--texture-line) 22px,
-    var(--texture-line) 23px
+    #000 22px,
+    #000 23px
+  );
+  mask-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 22px,
+    #000 22px,
+    #000 23px
   );
   pointer-events: none;
   opacity: 0;
@@ -2270,18 +2300,25 @@ body {
   line-height: 1.5;
 }
 
-.content-area::-webkit-scrollbar {
-  width: 5px;
+.content-area {
+  scrollbar-color: var(--accent) transparent;
+  scrollbar-width: thin;
 }
 
-.content-area::-webkit-scrollbar-track {
-  background: transparent;
-}
+@supports not (scrollbar-color: auto) {
+  .content-area::-webkit-scrollbar {
+    width: 5px;
+  }
 
-.content-area::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  opacity: 0.4;
-  border-radius: 2px;
+  .content-area::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .content-area::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    opacity: 0.4;
+    border-radius: 2px;
+  }
 }
 
 /* Welcome State */
@@ -2603,14 +2640,8 @@ body {
 }
 
 /* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
+dialog.modal::backdrop {
   background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
   backdrop-filter: blur(4px);
   animation: fadeIn 0.2s ease;
 }
@@ -2624,8 +2655,9 @@ body {
   }
 }
 
-.modal {
+dialog.modal {
   background: var(--overlay-surface);
+  color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-top: 3px solid var(--accent);
   border-radius: 3px;
@@ -2633,6 +2665,10 @@ body {
   min-width: 400px;
   max-width: 90vw;
   box-shadow: 4px 4px 0 rgba(0,0,0,0.25), 0 16px 48px rgba(0, 0, 0, 0.4);
+  
+  /* Reset dialog defaults */
+  margin: auto;
+  
   transform: scale(0.95) translateY(16px);
   opacity: 0;
   animation: modalSlide 0.2s ease forwards;
@@ -4175,19 +4211,26 @@ button.danger:disabled {
 }
 
 /* ===== GLOBAL SCROLLBAR ===== */
-*::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+* {
+  scrollbar-color: var(--accent) transparent;
+  scrollbar-width: thin;
 }
 
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
+@supports not (scrollbar-color: auto) {
+  *::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
 
-*::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  opacity: 0.3;
-  border-radius: 2px;
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    opacity: 0.3;
+    border-radius: 2px;
+  }
 }
 
 @media (max-width: 900px) {
