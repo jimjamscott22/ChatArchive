@@ -22,18 +22,18 @@ type ThemeId =
   | 'ocean'
   | 'forest';
 
-const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: 'dark', label: 'Dark', swatch: 'linear-gradient(135deg, #17130f 0 46%, #33281b 46% 72%, #c4944a 72%)' },
-  { id: 'light', label: 'Light', swatch: 'linear-gradient(135deg, #f8f1e4 0 46%, #dfc99f 46% 72%, #8b4513 72%)' },
-  { id: 'sepia', label: 'Sepia', swatch: 'linear-gradient(135deg, #f2e4ca 0 46%, #d6ba88 46% 72%, #8a4b1a 72%)' },
-  { id: 'coffee', label: 'Coffee', swatch: 'linear-gradient(135deg, #1d120b 0 46%, #4a2f1b 46% 72%, #d49a5c 72%)' },
-  { id: 'rose', label: 'Rose', swatch: 'linear-gradient(135deg, #f8ebe8 0 46%, #dfb9b4 46% 72%, #8a2940 72%)' },
-  { id: 'sunset', label: 'Sunset', swatch: 'linear-gradient(135deg, #25100e 0 46%, #713824 46% 72%, #f4a261 72%)' },
-  { id: 'nord', label: 'Nord', swatch: 'linear-gradient(135deg, #242933 0 46%, #414c5e 46% 72%, #88c0d0 72%)' },
-  { id: 'dracula', label: 'Dracula', swatch: 'linear-gradient(135deg, #1f2029 0 46%, #44475a 46% 72%, #bd93f9 72%)' },
-  { id: 'solarized-dark', label: 'Solarized', swatch: 'linear-gradient(135deg, #00232b 0 46%, #0d4450 46% 72%, #268bd2 72%)' },
-  { id: 'ocean', label: 'Ocean', swatch: 'linear-gradient(135deg, #07192e 0 46%, #154b75 46% 72%, #29b6f6 72%)' },
-  { id: 'forest', label: 'Forest', swatch: 'linear-gradient(135deg, #172017 0 46%, #3b5032 46% 72%, #8fbf6e 72%)' },
+const THEMES: { id: ThemeId; label: string; mood: string; swatch: string }[] = [
+  { id: 'dark', label: 'Dark', mood: 'Brass noir', swatch: 'linear-gradient(135deg, #17130f 0 38%, #44331f 38% 72%, #d6a65b 72%)' },
+  { id: 'light', label: 'Light', mood: 'Sunlit paper', swatch: 'linear-gradient(135deg, #fffaf0 0 38%, #e6d1aa 38% 72%, #8b4513 72%)' },
+  { id: 'sepia', label: 'Sepia', mood: 'Old manuscript', swatch: 'linear-gradient(135deg, #f4e5c6 0 38%, #cda66c 38% 72%, #7d3e12 72%)' },
+  { id: 'coffee', label: 'Coffee', mood: 'Roasted velvet', swatch: 'linear-gradient(135deg, #170b06 0 38%, #5c351d 38% 72%, #e4aa69 72%)' },
+  { id: 'rose', label: 'Rose', mood: 'Powdered lacquer', swatch: 'linear-gradient(135deg, #fff0ed 0 38%, #dda6aa 38% 72%, #922b50 72%)' },
+  { id: 'sunset', label: 'Sunset', mood: 'Ember horizon', swatch: 'linear-gradient(135deg, #1d0909 0 38%, #9c3d21 38% 72%, #ffc06f 72%)' },
+  { id: 'nord', label: 'Nord', mood: 'Polar glass', swatch: 'linear-gradient(135deg, #1d2430 0 38%, #4f6275 38% 72%, #9ce2eb 72%)' },
+  { id: 'dracula', label: 'Dracula', mood: 'Ultraviolet ink', swatch: 'linear-gradient(135deg, #181820 0 38%, #514568 38% 72%, #c7a0ff 72%)' },
+  { id: 'solarized-dark', label: 'Solarized', mood: 'Electric cyan', swatch: 'linear-gradient(135deg, #001b21 0 38%, #075365 38% 72%, #35aaf4 72%)' },
+  { id: 'ocean', label: 'Ocean', mood: 'Midnight tide', swatch: 'linear-gradient(135deg, #031326 0 38%, #0d5d86 38% 72%, #43d4ff 72%)' },
+  { id: 'forest', label: 'Forest', mood: 'Moss & pine', swatch: 'linear-gradient(135deg, #101a12 0 38%, #3f6040 38% 72%, #a8d880 72%)' },
 ];
 
 const THEME_STORAGE_KEY = 'chatarchive-theme';
@@ -1323,6 +1323,7 @@ export default function App() {
 
   return (
     <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}`}>
+      <div className="theme-transition-wash" key={theme} aria-hidden="true" />
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
@@ -2492,17 +2493,30 @@ export default function App() {
               style={{ position: 'fixed', inset: 0, zIndex: 499 }}
               onClick={() => setPaletteOpen(false)}
             />
-            <div className="theme-palette-menu" role="menu" style={{ zIndex: 501 }}>
+            <div
+              className="theme-palette-menu"
+              role="menu"
+              aria-label="Theme palette"
+              style={{ zIndex: 501 }}
+            >
+              <div className="theme-palette-heading" role="presentation">
+                <span>Archive atmosphere</span>
+                <strong>{currentThemeLabel}</strong>
+              </div>
               {THEMES.map(t => (
                 <button
                   key={t.id}
                   className={`theme-option ${theme === t.id ? 'active' : ''}`}
                   onClick={() => { setTheme(t.id); setPaletteOpen(false); }}
                   role="menuitemradio"
+                  aria-label={t.label}
                   aria-checked={theme === t.id}
                 >
                   <span className="theme-swatch" style={{ background: t.swatch }} />
-                  {t.label}
+                  <span className="theme-option-copy">
+                    <span className="theme-option-name">{t.label}</span>
+                    <span className="theme-option-mood">{t.mood}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -3991,4 +4005,3 @@ function KeyboardShortcutsModal({ onClose }: { onClose: () => void }) {
     </ModalShell>
   );
 }
-
