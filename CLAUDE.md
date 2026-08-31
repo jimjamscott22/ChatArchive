@@ -96,7 +96,7 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 
 ### Frontend (`frontend/src/`)
 
-- **`App.tsx`** — Single large component (~3750 lines) containing almost all UI: list, viewer, import, tags, projects, search, analytics, export, theme picker.
+- **`App.tsx`** — Single large component (~4000 lines) containing almost all UI: list, viewer, import, tags, projects, search, analytics, export, theme picker.
 - **`api.ts`** — Hardcoded `API_URL = "http://localhost:8000"` plus `apiFetch()` (attaches the Bearer token from `localStorage`).
 - **`main.tsx`** — React 18 mount point.
 - **`components/`** — `ModalShell.tsx` (shared dialog) and `AuthGate.tsx` (token prompt; verifies with `GET /stats`).
@@ -105,6 +105,13 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 Key deps: `react-markdown` + `rehype-highlight` (message rendering), `react-window` (list virtualization), `lucide-react` (icons).
 
 The frontend talks only to FastAPI. No env var, no Vite proxy, no browser Supabase client.
+
+### Theme System Contract
+
+- Theme selection lives in `App.tsx`: `ThemeId` and `THEMES` define the supported palettes, `chatarchive-theme` persists the choice in `localStorage`, and a `useEffect` applies it through `data-theme` on `document.documentElement`.
+- Every theme has two coordinated token layers in `styles.css`: the core colors/surfaces and the semantic atmosphere tokens used by the canvas, sidebar, header, reader, messages, controls, overlays, texture, ambient glow, picker button, and theme-transition wash. Add or change a theme in both layers so the shared layout stays intact.
+- The picker uses `menuitemradio` buttons with exact theme-name `aria-label`s, a checked state, multi-tone swatches, and descriptive mood copy. Preserve those semantics when changing its presentation.
+- Keep visual motion restrained and retain the global `prefers-reduced-motion` override. For non-trivial visual work, run the frontend tests and build, then inspect desktop and mobile rendering plus theme switching/persistence.
 
 ### Database Schema
 
@@ -200,7 +207,7 @@ prompts for it once and stores it in the browser's `localStorage`.
   Works in the PyInstaller build only because the bundled backend also listens
   on 8000. All API calls go through `apiFetch()` there, which attaches the
   stored token — don't call raw `fetch()` against `API_URL` from `App.tsx`.
-- **No Tailwind** — see the frontend section. Use the `styles.css` CSS variables.
+- **No Tailwind** — see the frontend section. Use the `styles.css` CSS variables, and preserve both the core and semantic token layers for all 11 themes.
 - **Root-level `.py` scripts in `backend/`** (`migrate_*.py`, `init_db.py`,
   `check_schema.py`) are one-off migration/inspection utilities, not part of the app.
   Note `init_db.py` exists in three places (`backend/`, `app/database/`, `app/db_scripts/`).
