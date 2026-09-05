@@ -753,4 +753,3 @@ The feature is complete only when:
 - desktop, mobile, accessibility, themes, and Windows packaging are verified;
 - user and developer documentation reflects actual, not assumed, provider
   behavior.
-

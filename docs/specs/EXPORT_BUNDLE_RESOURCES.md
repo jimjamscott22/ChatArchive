@@ -1,7 +1,7 @@
 # Export Bundle Resources Specification
 
-Status: Proposed  
-Target: ChatArchive  
+Status: Proposed
+Target: ChatArchive
 Initial providers: ChatGPT and Claude
 
 ## 1. Summary
@@ -629,4 +629,3 @@ exports. Samples are needed to confirm:
 
 Unknown sample-specific fields must not block the generic bundle framework.
 Provider adapters should isolate subsequent schema updates.
-
