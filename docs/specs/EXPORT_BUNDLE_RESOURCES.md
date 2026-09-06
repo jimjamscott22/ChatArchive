@@ -368,12 +368,26 @@ Deleting import history removes:
 
 - conversations still owned by that import according to existing semantics;
 - associated resource rows;
-- stored resource objects;
+- stored resource objects only when no surviving resource references their
+  bucket and exact storage path, across all imports;
 - provider projects created by that import only when no remaining conversation
   or resource references them.
 
 Object-storage deletion failures are reported and retried or left as auditable
 cleanup warnings; they must not silently leave public objects.
+
+Collect candidate paths before removing resource rows, then check surviving
+references after commit. An object's import prefix denotes upload provenance,
+not exclusive ownership: deleting the original import must preserve bytes
+reused by a newer import. Deleting the final referencing resource must clean up
+the object even when its original import history is already gone.
+
+Reference creation/reuse and final reference-check/object removal must share
+per-object coordination across workers so cleanup cannot race a new reference.
+Reuse verifies object existence under that coordination. Cleanup retries and
+maintenance use the same guard and a fresh reference check, never a prefix
+sweep. If reference state cannot be verified, retain the object and record a
+durable cleanup warning independent of the deleted import record.
 
 ## 11. Provider behavior
 
@@ -488,8 +502,10 @@ Import sequence:
 Database writes are transactional after the history row is created. Object
 storage is not transactional:
 
-- uploaded paths are tracked as they are created;
-- a database failure triggers best-effort object cleanup;
+- newly uploaded paths are tracked separately from reused paths;
+- a database failure triggers best-effort cleanup of newly uploaded objects
+  using the reference-aware contract in section 10.4; reused objects are never
+  candidates for that failed import's compensating cleanup;
 - an optional resource upload failure creates an unavailable resource and marks
   the import `partial`;
 - malformed or unsafe archives fail before any conversation is ingested.
@@ -509,7 +525,9 @@ When auto-merge is enabled:
 - resources without stable IDs resolve by parent context, kind, and SHA-256;
 - message-associated resources are rebuilt when their merged conversation's
   messages are rebuilt;
-- unchanged stored objects may be reused by SHA-256;
+- unchanged stored objects may be reused by SHA-256 while retaining their exact
+  storage paths, including paths under older import prefixes; cleanup follows
+  section 10.4 rather than treating that prefix as exclusive ownership;
 - missing content in a newer export does not delete previously stored bytes
   unless the provider explicitly marks the resource deleted.
 
@@ -591,9 +609,12 @@ Warnings use stable codes so the frontend and tests do not depend on prose.
 
 - Import history reports conversation, project, resource, unavailable, and
   warning counts.
-- Deleting an import removes its resource rows and stored objects without
-  deleting shared provider projects still in use.
+- Deleting an import removes its resource rows and unreferenced stored objects
+  without deleting shared blobs or provider projects still in use.
 - Re-import with auto-merge does not duplicate stable resources.
+- A delete-after-reuse lifecycle test proves that B can still download the
+  original bytes after reusing A's object and deleting A, and that deleting the
+  final reference later removes the object under A's former prefix.
 
 ### Verification
 

@@ -320,11 +320,16 @@ Add:
 - streaming or bounded byte handling;
 - object existence/reuse check where supported;
 - authenticated download support;
-- batch cleanup under one import prefix;
+- reference-aware batch cleanup of explicit candidate object paths;
 - safe content-disposition filename helper.
 
 Do not use `get_public_url` for resources. If short-lived signed URLs are used,
 their lifetime must be brief and they must not be persisted.
+
+An import prefix records where an object was first uploaded, not exclusive
+ownership. Never delete a resource prefix wholesale: another import may still
+reference an object within it. Identify objects by bucket and exact storage
+path, not by SHA-256 alone.
 
 ### 6.2 Bundle ingestion service
 
@@ -340,7 +345,8 @@ Responsibilities:
 - store inline resources;
 - upload matched resource entries;
 - persist metadata-only/unavailable resources;
-- track uploaded paths for compensating cleanup;
+- track newly uploaded paths separately from reused paths for compensating
+  cleanup; rollback must never remove a reused object;
 - produce structured counts and warnings.
 
 Refactor `_ingest_parsed_conversations` out of `main.py` only if required to
@@ -353,7 +359,9 @@ Implement auto-merge behavior:
 - rebuild message-associated resource rows alongside rebuilt messages;
 - resolve stable resources by source identity;
 - use SHA-256 fallback only within the same parent context;
-- reuse identical stored objects;
+- reuse identical stored objects while retaining their exact storage paths,
+  including paths under older import prefixes; use the reference-aware cleanup
+  contract in section 7.3 for all resource deletion paths;
 - do not delete previously stored bytes merely because a later export omitted
   them;
 - keep keep-separate behavior unchanged.
@@ -371,6 +379,8 @@ Cover:
 - cleanup failure becomes an auditable warning;
 - name collision with manual project;
 - auto-merge resource reuse;
+- failed auto-merge after reuse leaves the original object's bytes intact;
+- delete-after-reuse lifecycle coverage specified in section 9.3;
 - keep-separate duplicate resources;
 - attachment over per-resource limit;
 - no private storage configured.
@@ -416,7 +426,10 @@ Add:
 
 Requirements:
 
-- all use the existing bearer-token protection;
+- explicitly include `/resources` in `PROTECTED_PREFIXES` in
+  `backend/app/auth.py` in this phase so both top-level resource routes use the
+  bearer-token middleware; the conversation/project prefixes already protect
+  the nested list routes;
 - list endpoints paginate;
 - list responses exclude large `text_content`;
 - metadata fetch caps inline text or links to content endpoint;
@@ -429,11 +442,28 @@ Requirements:
 
 Extend import-history deletion:
 
-- collect storage paths before deleting rows;
+- collect distinct candidate storage paths from the resource rows being removed
+  before deleting those rows, even when paths belong to an older import prefix;
 - delete database-owned records in one transaction;
-- remove objects after commit with recorded cleanup failures;
+- after commit, remove each candidate object only when no surviving resource
+  row across any import references its bucket and exact storage path;
+- preserve referenced objects regardless of which import originally uploaded
+  them; deleting the final referencing resource must reconsider its path for
+  cleanup even if the original import history no longer exists;
+- serialize reference creation/reuse and final reference-check/object removal
+  using the same per-object coordination across workers; a check followed by
+  an unguarded delete is insufficient. A reuse operation must verify that the
+  object still exists under that coordination before committing a reference;
+- record cleanup failures durably outside the deleted import record and retry
+  idempotently with a fresh reference check under the same coordination; never
+  replay an old deletion decision or sweep an import prefix;
 - delete provider projects only when unreferenced;
 - preserve projects shared with newer imports.
+
+Use this same cleanup contract for conversation deletion, import deletion,
+compensating cleanup of newly uploaded objects, and maintenance commands.
+If reference state cannot be checked, retain the object and record a cleanup
+warning for retry.
 
 ### 7.4 API documentation and tests
 
@@ -444,11 +474,18 @@ an explicit integration test target configured with a live test PostgreSQL
 database, or extract request-independent route logic into testable pure
 services. Document the separation in `docs/TESTING.md`.
 
+Keep offline regression coverage in `backend/tests/test_auth.py` for resource
+path protection, invalid/missing bearer tokens, valid tokens, and public paths.
+In the route integration target, verify both `GET /resources/{resource_id}` and
+`GET /resources/{resource_id}/content` return 401 without a token or with an
+invalid token, and allow access with a valid token. Preserve unauthenticated
+CORS preflight handling and public `/health` and frontend access.
+
 ### 7.5 Exit criteria
 
 - API contracts match the specification.
 - Direct JSON endpoints are regression-compatible.
-- Resource content cannot be accessed without authentication.
+- Resource metadata and content cannot be accessed without authentication.
 
 ## 8. Phase 6: frontend import and resource UI
 
@@ -590,7 +627,27 @@ Exercise:
 - delete an import with unique and shared projects;
 - merge a newer import;
 - retry after partial storage failure;
-- remove stale object prefixes with an explicit maintenance command if needed.
+- remove unreferenced objects with an explicit maintenance command using the
+  same reference-aware cleanup contract; an old prefix is not proof of an
+  orphaned object.
+
+Add `test_delete_original_import_after_blob_reuse` to the offline lifecycle
+tests using fake storage and persistence boundaries:
+
+1. Import A uploads an object under `imports/A/resources/...`.
+2. Auto-merge import B creates or updates a surviving resource to reuse that
+   exact path without another upload.
+3. Delete import A through the deletion service and commit. Assert that B's
+   resource still references the object, storage removal was not called for
+   that path, and downloading through B returns the original bytes.
+4. Delete B's final referencing resource and commit. Assert that the object
+   under A's prefix is now removed despite A's history no longer existing.
+
+Also cover failed-import rollback after reuse, cleanup retries while a surviving
+reference exists, and concurrent reuse versus final-reference cleanup. Assert
+that no interleaving commits a resource pointing at deleted bytes. Repeat the
+delete-after-reuse scenario in the opt-in PostgreSQL/private-bucket integration
+target to verify real cascades, coordination, and authenticated downloads.
 
 ## 10. Documentation updates
 
@@ -654,6 +711,8 @@ Against a dedicated disposable PostgreSQL database and private test bucket:
 - import missing binary;
 - auto-merge same bundle;
 - delete import and verify rows/objects;
+- auto-merge B reusing A's blob, delete A, download B's resource successfully,
+  then delete the final reference and verify object removal;
 - verify unauthenticated resource access fails;
 - verify HTML/SVG downloads with safe headers;
 - inspect resource search query plan.

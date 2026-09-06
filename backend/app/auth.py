@@ -24,6 +24,7 @@ PROTECTED_PREFIXES = (
     "/settings",
     "/tags",
     "/projects",
+    "/resources",
     "/storage",
     "/sync",
 )
