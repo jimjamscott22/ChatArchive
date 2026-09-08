@@ -969,10 +969,13 @@ async def import_export_bundle(
     if len(raw) > MAX_IMPORT_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
 
+    reader: BundleReader | None = None
     try:
         reader = BundleReader(filename, raw)
         bundle = parse_export_bundle(source, reader)
     except BundleValidationError as exc:
+        if reader is not None:
+            reader.close()
         raise HTTPException(
             status_code=400,
             detail={"code": exc.code, "message": str(exc)},

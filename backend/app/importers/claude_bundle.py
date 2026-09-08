@@ -135,7 +135,13 @@ def _conversation_values(payload: object) -> list[dict[str, Any]]:
             "BUNDLE_CONVERSATIONS_INVALID",
             "Claude conversations.json is not an array",
         )
-    return [item for item in values if isinstance(item, dict)]
+    conversations = [item for item in values if isinstance(item, dict)]
+    if not conversations:
+        raise BundleValidationError(
+            "BUNDLE_CONVERSATIONS_INVALID",
+            "Claude conversations.json contains no conversations",
+        )
+    return conversations
 
 
 def _parse_projects(reader: BundleReader) -> list[ParsedProject]:

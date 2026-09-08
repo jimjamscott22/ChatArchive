@@ -213,6 +213,11 @@ class BundleReader:
                     "ARCHIVE_DUPLICATE_PATH",
                     f"Archive contains a duplicate path: {normalized}",
                 )
+            if normalized.casefold() in casefold_paths:
+                raise BundleValidationError(
+                    "ARCHIVE_DUPLICATE_PATH",
+                    f"Archive contains paths that differ only by case: {normalized}",
+                )
             if info.file_size > self.limits.max_entry_bytes:
                 raise BundleValidationError(
                     "ARCHIVE_ENTRY_SIZE",

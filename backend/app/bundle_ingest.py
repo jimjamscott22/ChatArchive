@@ -242,6 +242,7 @@ def _resource_values(
     availability = resource.availability
     byte_size = resource.byte_size
     sha256 = resource.sha256
+    mime_type = resource.mime_type
     storage_path: str | None = None
     upload_failed = False
 
@@ -250,12 +251,13 @@ def _resource_values(
             content = reader.read_bytes(resource.archive_entry)
             byte_size = len(content)
             sha256 = hashlib.sha256(content).hexdigest()
+            mime_type = _detect_mime_type(content, resource.mime_type)
             uploaded = uploader(
                 import_history_id,
                 sha256,
                 resource.filename,
                 content,
-                resource.mime_type,
+                mime_type,
             )
         except BundleValidationError:
             raise
@@ -284,7 +286,7 @@ def _resource_values(
         "kind": resource.kind.value,
         "title": resource.title,
         "filename": resource.filename,
-        "mime_type": resource.mime_type,
+        "mime_type": mime_type,
         "availability": availability.value,
         "byte_size": byte_size,
         "sha256": sha256,
@@ -293,6 +295,35 @@ def _resource_values(
         "metadata_json": json.dumps(resource.raw_metadata, default=str),
     }
     return values, warnings, upload_failed
+
+
+def _detect_mime_type(content: bytes, claimed: str | None) -> str:
+    """Prefer security-relevant file signatures over provider metadata."""
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if (
+        len(content) >= 12
+        and content.startswith(b"RIFF")
+        and content[8:12] == b"WEBP"
+    ):
+        return "image/webp"
+    if content.startswith(b"%PDF-"):
+        return "application/pdf"
+    if content.startswith(b"PK\x03\x04"):
+        return "application/zip"
+
+    sample = content[:4096].lstrip().lower()
+    if sample.startswith(b"<?xml"):
+        sample = sample[sample.find(b"?>") + 2 :].lstrip()
+    if b"<svg" in sample[:1024]:
+        return "image/svg+xml"
+    if any(marker in sample[:1024] for marker in (b"<!doctype html", b"<html", b"<script")):
+        return "text/html"
+    return claimed or "application/octet-stream"
 
 
 def _find_existing_resource(

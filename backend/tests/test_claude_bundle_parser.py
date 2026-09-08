@@ -4,7 +4,9 @@ import io
 import json
 import zipfile
 
-from app.importers.bundle_reader import BundleReader
+import pytest
+
+from app.importers.bundle_reader import BundleReader, BundleValidationError
 from app.importers.bundles import parse_export_bundle
 from app.importers.bundle_types import ResourceAvailability, ResourceKind
 from app.importers.claude_bundle import iter_legacy_artifacts
@@ -191,3 +193,11 @@ def test_claude_bundle_creates_placeholder_project() -> None:
     with BundleReader("claude.zip", bundle) as reader:
         parsed = parse_export_bundle("claude", reader)
     assert parsed.projects[0].name == "Claude project 12345678"
+
+
+def test_claude_bundle_rejects_empty_authoritative_data() -> None:
+    bundle = make_bundle({"conversations.json": []})
+    with BundleReader("claude.zip", bundle) as reader:
+        with pytest.raises(BundleValidationError) as exc_info:
+            parse_export_bundle("claude", reader)
+    assert exc_info.value.code == "BUNDLE_CONVERSATIONS_INVALID"

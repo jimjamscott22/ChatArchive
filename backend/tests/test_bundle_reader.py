@@ -51,6 +51,13 @@ def test_inventory_and_case_insensitive_lookup() -> None:
         ]
 
 
+def test_paths_that_differ_only_by_case_are_rejected() -> None:
+    assert_rejected(
+        make_zip([("Data.json", b"{}"), ("data.json", b"{}")]),
+        "ARCHIVE_DUPLICATE_PATH",
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "code"),
     [
