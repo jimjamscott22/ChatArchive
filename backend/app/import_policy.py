@@ -27,6 +27,10 @@ def is_json_import(filename: str | None) -> bool:
     return filename_extension(filename) == "json"
 
 
+def is_bundle_import(filename: str | None) -> bool:
+    return filename_extension(filename) == "zip"
+
+
 def is_import_filename_allowed(filename: str | None, allowed_formats: str | None) -> bool:
     ext = filename_extension(filename)
     if not ext:
