@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import ModalShell from "./components/ModalShell";
 import AuthGate from "./components/AuthGate";
+import ConversationResources from "./components/ConversationResources";
 import { API_URL, apiFetch, apiErrorMessage, getToken, setUnauthorizedHandler } from "./api";
 
 const PAGE_SIZE = 100;
@@ -102,6 +103,24 @@ type ImportSettings = {
   keep_separate: boolean;
   skip_empty_conversations: boolean;
   updated_at: string;
+};
+
+type BundleImportResult = {
+  import_history_id: number;
+  status: "success" | "partial";
+  conversations: { imported: number; updated: number; skipped: number };
+  projects: { created: number; matched: number };
+  resources: {
+    stored: number;
+    inline: number;
+    metadata_only: number;
+    unavailable: number;
+  };
+  warnings: {
+    code: string;
+    message: string;
+    entry?: string | null;
+  }[];
 };
 
 type DuplicateConversation = {
@@ -1310,6 +1329,7 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              <ConversationResources conversationId={selectedConversation.id} />
             </div>
           ) : (
             <div className="welcome-state">
@@ -2402,6 +2422,7 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              <ConversationResources conversationId={selectedConversation.id} />
             </div>
           )}
         </div>
@@ -2724,6 +2745,8 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'chatgpt' | 'claude' | 'gemini' | 'copilot'>('chatgpt');
   const [settings, setSettings] = useState<ImportSettings | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [bundleResult, setBundleResult] = useState<BundleImportResult | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -2750,18 +2773,18 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   const sourceInfo: Record<'chatgpt' | 'claude' | 'gemini' | 'copilot', SourceInfo> = {
     chatgpt: {
       name: 'ChatGPT',
-      description: 'OpenAI ChatGPT conversations.json export',
+      description: 'OpenAI export ZIP (preferred) or conversations.json',
       icon: '💬',
       exportUrl: 'https://chatgpt.com/#settings/DataControls',
       exportSteps: [
         'Go to ChatGPT Settings → Data Controls → Export Data',
         'Click "Export" and wait for the email confirmation',
-        'Download the archive and extract conversations.json',
+        'Download the archive and import the untouched ZIP to preserve available projects and files',
       ],
     },
     claude: {
       name: 'Claude',
-      description: 'Anthropic Claude conversation export',
+      description: 'Anthropic export ZIP (preferred) or conversations.json',
       icon: '🤖',
       exportUrl: 'https://claude.ai/settings',
       exportSteps: [
@@ -2769,7 +2792,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
         'Navigate to "Data & Privacy"',
         'Click "Request your data export"',
         'Wait for the email with your export (may take a few hours)',
-        'Download and extract the JSON file',
+        'Download the archive and import the untouched ZIP to preserve available artifacts',
       ],
     },
     gemini: {
@@ -2803,14 +2826,22 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       setError("Please select a file");
       return;
     }
+    const isBundle = file.name.toLowerCase().endsWith(".zip");
+    if (isBundle && source !== "chatgpt" && source !== "claude") {
+      setError("ZIP bundle import is currently available for ChatGPT and Claude only");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      setStatus("Uploading...");
+      setImporting(true);
+      setBundleResult(null);
+      setStatus(isBundle ? "Uploading and validating bundle…" : "Uploading…");
       setError(null);
-      const response = await apiFetch(`${API_URL}/import/${source}`, {
+      const endpoint = isBundle ? `/import/${source}/bundle` : `/import/${source}`;
+      const response = await apiFetch(`${API_URL}${endpoint}`, {
         method: "POST",
         body: formData,
       });
@@ -2821,6 +2852,17 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
       }
 
       const data = await response.json();
+      if (isBundle) {
+        const result = data as BundleImportResult;
+        setBundleResult(result);
+        setStatus(
+          result.status === "partial"
+            ? "Bundle imported with some unavailable resources."
+            : "Bundle import complete.",
+        );
+        onSuccess();
+        return;
+      }
       const countMsg = data.length === 1 ? "1 conversation" : `${data.length} conversations`;
       const dupeMsg = settings?.auto_merge_duplicates ? " (existing conversations updated)" : "";
       setStatus(`Imported ${countMsg} from ${sourceInfo[source].name}!${dupeMsg}`);
@@ -2831,6 +2873,8 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     } catch (err) {
       setStatus(null);
       setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -2873,11 +2917,19 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
           <input
             id="file-input"
             type="file"
-            accept="application/json"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            accept=".json,application/json,.zip,application/zip"
+            onChange={(e) => {
+              setFile(e.target.files?.[0] || null);
+              setBundleResult(null);
+              setStatus(null);
+              setError(null);
+            }}
             className="file-input"
           />
           {file && <p className="file-name">📄 {file.name}</p>}
+          {file?.name.toLowerCase().endsWith(".zip") && source !== "chatgpt" && source !== "claude" && (
+            <p className="status-error">Choose ChatGPT or Claude to import a ZIP bundle.</p>
+          )}
         </div>
 
         {settings?.auto_merge_duplicates && (
@@ -2888,13 +2940,42 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary" disabled={!file || status === "Uploading..."}>
-            {status === "Uploading..." ? "Importing..." : `Import from ${sourceInfo[source].name}`}
+          <button type="submit" className="primary" disabled={!file || importing}>
+            {importing ? "Importing…" : `Import from ${sourceInfo[source].name}`}
           </button>
         </div>
       </form>
-      {status && <div className="status-success">{status}</div>}
+      {status && <div className="status-success" aria-live="polite">{status}</div>}
       {error && <div className="status-error">{error}</div>}
+      {bundleResult && (
+        <section className="bundle-import-summary" aria-label="Bundle import summary">
+          <div className="bundle-summary-grid">
+            <div><strong>{bundleResult.conversations.imported}</strong><span>conversations added</span></div>
+            <div><strong>{bundleResult.conversations.updated}</strong><span>conversations updated</span></div>
+            <div><strong>{bundleResult.projects.created}</strong><span>projects created</span></div>
+            <div><strong>{bundleResult.resources.stored + bundleResult.resources.inline}</strong><span>resources available</span></div>
+            <div><strong>{bundleResult.resources.metadata_only}</strong><span>metadata only</span></div>
+            <div><strong>{bundleResult.resources.unavailable}</strong><span>unavailable</span></div>
+          </div>
+          {bundleResult.warnings.length > 0 && (
+            <div className="bundle-warning-list">
+              <h3>Import notes</h3>
+              <ul>
+                {bundleResult.warnings.map((warning, index) => (
+                  <li key={`${warning.code}-${warning.entry || index}`}>
+                    <strong>{warning.code.replaceAll("_", " ").toLowerCase()}</strong>
+                    <span>{warning.message}</span>
+                    {warning.entry && <code>{warning.entry}</code>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="primary" onClick={onClose}>Done</button>
+          </div>
+        </section>
+      )}
     </ModalShell>
   );
 }
