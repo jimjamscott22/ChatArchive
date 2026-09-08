@@ -120,6 +120,56 @@ Import conversations from a Gemini/Bard export file.
 ]
 ```
 
+### Import ChatGPT or Claude Export Bundle
+`POST /import/{source}/bundle`
+
+Import an untouched provider ZIP, including conversations plus discoverable
+projects, artifacts, attachments, and bundled file bytes. Supported `source`
+values are `chatgpt` and `claude`. Direct JSON imports continue to use the
+provider endpoints above.
+
+**Request:**
+- Method: `POST`
+- Content-Type: `multipart/form-data`
+- Body: Form data with a `.zip` file in the `file` field
+- Maximum compressed upload: 100 MB
+
+**Response:**
+```json
+{
+  "import_history_id": 42,
+  "status": "partial",
+  "conversations": {
+    "imported": 10,
+    "updated": 1,
+    "skipped": 0
+  },
+  "projects": {
+    "created": 2,
+    "matched": 1
+  },
+  "resources": {
+    "stored": 3,
+    "inline": 4,
+    "metadata_only": 2,
+    "unavailable": 1
+  },
+  "warnings": [
+    {
+      "code": "RESOURCE_BYTES_MISSING",
+      "message": "The export references a resource but does not contain its bytes.",
+      "entry": null,
+      "context": {
+        "reference": "file-123"
+      }
+    }
+  ]
+}
+```
+
+Unsafe or malformed archives return `400` with a stable error code in
+`detail.code`. Uploads over 100 MB return `413`.
+
 **Error Responses:**
 
 All import endpoints may return:
@@ -132,6 +182,34 @@ Example error:
   "detail": "Invalid JSON format"
 }
 ```
+
+---
+
+## Resource Endpoints
+
+All resource endpoints require the application bearer token.
+
+### List Conversation Resources
+`GET /conversations/{conversation_id}/resources`
+
+### List Project Resources
+`GET /projects/{project_id}/resources`
+
+Both list endpoints accept `page` and `page_size` and return metadata without
+large text or binary bodies.
+
+### Get Resource Metadata
+`GET /resources/{resource_id}`
+
+Returns resource metadata and inline text when present.
+
+### Get Resource Content
+`GET /resources/{resource_id}/content`
+
+Returns inline text or privately stored bytes. HTML, SVG, executable, and
+unknown content uses `Content-Disposition: attachment`. Every response includes
+`X-Content-Type-Options: nosniff`. Resources whose content was omitted by the
+provider return `409`.
 
 ---
 

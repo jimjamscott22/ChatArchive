@@ -120,6 +120,36 @@ function installFetchMock(options: FetchMockOptions = {}) {
       });
     }
 
+    if (url.includes("/conversations/1/resources")) {
+      return jsonResponse({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 50,
+        pages: 0,
+      });
+    }
+
+    if (url.includes("/import/chatgpt/bundle")) {
+      return jsonResponse({
+        import_history_id: 7,
+        status: "partial",
+        conversations: { imported: 2, updated: 0, skipped: 0 },
+        projects: { created: 1, matched: 0 },
+        resources: { stored: 1, inline: 1, metadata_only: 1, unavailable: 1 },
+        warnings: [
+          {
+            code: "RESOURCE_BYTES_MISSING",
+            message: "The provider export omitted one file.",
+          },
+        ],
+      });
+    }
+
+    if (url.includes("/import/chatgpt")) {
+      return jsonResponse([{ ...baseConversation, id: 2 }]);
+    }
+
     if (url.includes("/conversations/1")) {
       return jsonResponse({
         ...baseConversation,
@@ -288,5 +318,30 @@ describe("App UI improvements", () => {
     fireEvent.click(keepSeparate);
     expect(keepSeparate).toBeChecked();
     expect(autoMerge).not.toBeChecked();
+  });
+
+  it("routes ChatGPT ZIP files to bundle import and keeps the summary visible", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: /import conversations/i }))[0]);
+    const dialog = await screen.findByRole("dialog", { name: /import conversations/i });
+    const fileInput = within(dialog).getByLabelText(/select file/i);
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["zip"], "export.zip", { type: "application/zip" })],
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /import from chatgpt/i }));
+
+    expect(await within(dialog).findByText(/bundle imported with some unavailable resources/i)).toBeInTheDocument();
+    expect(within(dialog).getByText("conversations added").parentElement).toHaveTextContent(
+      "2conversations added",
+    );
+    expect(within(dialog).getByText(/provider export omitted one file/i)).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes("/import/chatgpt/bundle")),
+    ).toBe(true);
+    expect(within(dialog).getByRole("button", { name: /done/i })).toBeInTheDocument();
   });
 });

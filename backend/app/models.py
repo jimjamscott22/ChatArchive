@@ -40,6 +40,9 @@ class Conversation(Base):
     project: Mapped["Project | None"] = relationship(
         "Project", back_populates="conversations"
     )
+    resources: Mapped[list["Resource"]] = relationship(
+        "Resource", back_populates="conversation"
+    )
 
 
 class Message(Base):
@@ -59,6 +62,9 @@ class Message(Base):
     
     # Relationship
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
+    resources: Mapped[list["Resource"]] = relationship(
+        "Resource", back_populates="message"
+    )
     
     # Index for efficient message retrieval
     __table_args__ = (
@@ -78,10 +84,17 @@ class ImportHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     imported_count: Mapped[int] = mapped_column(Integer, default=0)  # Number of conversations imported
     error_message: Mapped[str | None] = mapped_column(Text)  # Error details if failed
+    manifest_json: Mapped[str | None] = mapped_column(Text)
+    resource_count: Mapped[int] = mapped_column(Integer, default=0)
+    unavailable_resource_count: Mapped[int] = mapped_column(Integer, default=0)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0)
     
     # Relationships
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="import_history"
+    )
+    resources: Mapped[list["Resource"]] = relationship(
+        "Resource", back_populates="import_history", cascade="all, delete-orphan"
     )
 
 
@@ -143,9 +156,93 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(String(500))
     color: Mapped[str | None] = mapped_column(String(7))  # Hex color code, e.g., #3B82F6
+    source: Mapped[str | None] = mapped_column(String(50))
+    source_id: Mapped[str | None] = mapped_column(String(255))
+    instructions: Mapped[str | None] = mapped_column(Text)
+    raw_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     conversations: Mapped[list["Conversation"]] = relationship(
         "Conversation", back_populates="project"
+    )
+    resources: Mapped[list["Resource"]] = relationship(
+        "Resource", back_populates="project"
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_projects_source_source_id",
+            "source",
+            "source_id",
+            unique=True,
+        ),
+    )
+
+
+class Resource(Base):
+    __tablename__ = "resources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    import_history_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("import_history.id", ondelete="CASCADE"),
+        index=True,
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        index=True,
+    )
+    conversation_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    message_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(50), index=True)
+    source_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    logical_id: Mapped[str | None] = mapped_column(String(255))
+    version_index: Mapped[int | None] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(50), index=True)
+    title: Mapped[str | None] = mapped_column(String(255))
+    filename: Mapped[str | None] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(255))
+    availability: Mapped[str] = mapped_column(String(50), index=True)
+    byte_size: Mapped[int | None] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    storage_path: Mapped[str | None] = mapped_column(String(1000))
+    text_content: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    import_history: Mapped["ImportHistory"] = relationship(
+        "ImportHistory", back_populates="resources"
+    )
+    project: Mapped["Project | None"] = relationship(
+        "Project", back_populates="resources"
+    )
+    conversation: Mapped["Conversation | None"] = relationship(
+        "Conversation", back_populates="resources"
+    )
+    message: Mapped["Message | None"] = relationship(
+        "Message", back_populates="resources"
+    )
+
+    __table_args__ = (
+        Index("ix_resources_source_identity", "source", "source_id"),
+        Index(
+            "ix_resources_conversation_logical_version",
+            "conversation_id",
+            "logical_id",
+            "version_index",
+        ),
     )
