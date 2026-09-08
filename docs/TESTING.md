@@ -33,6 +33,12 @@ python -m pytest tests/test_copilot_parser.py -v
 # Gemini parser tests
 python -m pytest tests/test_gemini_parser.py -v
 
+# Export bundle archive, adapter, and ingestion tests
+python -m pytest tests/test_bundle_reader.py -v
+python -m pytest tests/test_chatgpt_bundle_parser.py -v
+python -m pytest tests/test_claude_bundle_parser.py -v
+python -m pytest tests/test_bundle_ingest.py -v
+
 # Integration tests
 python -m pytest tests/test_integration.py -v
 ```
@@ -69,15 +75,9 @@ Integration tests verify that:
 
 ## Test Coverage
 
-Total: **78 tests**
-
-- ChatGPT parser: 12 tests
-- Claude parser: 13 tests
-- Copilot parser: 25 tests
-- Gemini parser: 23 tests
-- Integration tests: 5 tests
-
-All tests pass ✅
+The suite includes direct provider parser coverage, malicious in-memory ZIP
+cases, provider bundle adapters, and bundle-ingestion behavior. Archive tests
+construct ZIPs in memory and never extract untrusted entries to disk.
 
 ## Verification Script
 
@@ -167,4 +167,8 @@ uv sync
 
 ### Database Issues
 
-Tests don't require a database. They only test the parser logic, not the API endpoints or database operations.
+The default suite requires no live database or Supabase connection. Bundle
+ingestion tests use an isolated in-memory SQLAlchemy database and fake object
+storage. Migration and authenticated resource-route integration checks require
+a separate disposable PostgreSQL database and private test bucket; never point
+those checks at production.

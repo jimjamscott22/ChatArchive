@@ -91,6 +91,10 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 - **`supabase_client.py`** — Lazy singleton Supabase client (`get_supabase_client()`), plus `is_supabase_configured()` / `get_connection_info()` / `get_dashboard_url()` used by status endpoints.
 - **`query_filters.py`** — `apply_conversation_filters()`, the shared filter builder used by **both** the list and search endpoints (source, tags, project, date range). Change filtering logic here, not in `main.py`.
 - **`importers/`** — One file per LLM source (`chatgpt.py`, `claude.py`, `copilot.py`, `gemini.py`). See "Adding a New Importer" below for the actual contract.
+- **Export bundles** — `importers/bundle_reader.py` performs bounded ZIP
+  validation; `chatgpt_bundle.py` / `claude_bundle.py` produce canonical
+  projects and resources; `bundle_ingest.py` persists them. Apply
+  `migrate_add_bundle_resources.py` before enabling `POST /import/{source}/bundle`.
 - **`preprocessing/`** — Standalone clean → classify → deduplicate → extract → count-tokens pipeline (`pipeline.py` orchestrates `cleaner`/`classifier`/`deduplication`/`extractor`/`parser`/`token_counter`).
   ⚠️ **Not wired into the import flow.** `main.py` does not import it; it is tested but currently unused. Don't assume imported conversations have been preprocessed.
 

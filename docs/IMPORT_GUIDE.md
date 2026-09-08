@@ -17,7 +17,7 @@ ChatArchive supports importing conversations from multiple AI platforms. This gu
 
 1. Open ChatGPT and go to Settings → Data Controls → Export Data
 2. Click "Export" and wait for the email confirmation
-3. Download the archive and extract `conversations.json`
+3. Download the archive
 
 ### File Format
 
@@ -54,7 +54,8 @@ ChatGPT exports use a nested JSON structure with a tree-based message mapping sy
 
 1. Open ChatArchive and click the "Import" button
 2. Select "ChatGPT" from the source dropdown
-3. Choose your `conversations.json` file
+3. Choose the untouched ZIP to preserve available projects and resources, or
+   choose `conversations.json` for a conversation-only import
 4. Click "Import from ChatGPT"
 
 ---
@@ -67,7 +68,7 @@ ChatGPT exports use a nested JSON structure with a tree-based message mapping sy
 2. Navigate to "Data & Privacy"
 3. Click "Request your data export"
 4. Wait for the email with your export (may take a few hours)
-5. Download and extract the JSON file
+5. Download the archive
 
 ### File Format
 
@@ -101,8 +102,38 @@ Claude exports contain conversations with structured chat messages.
 
 1. Open ChatArchive and click the "Import" button
 2. Select "Claude" from the source dropdown
-3. Choose your Claude export JSON file
+3. Choose the untouched ZIP to preserve available projects and artifacts, or
+   choose the extracted conversation JSON for a conversation-only import
 4. Click "Import from Claude"
+
+---
+
+## Export Bundle Resources
+
+ZIP bundle import is available for ChatGPT and Claude. ChatArchive validates
+the archive without extracting it to disk, imports authoritative conversation
+JSON, maps provider project IDs to local projects, and records resources with
+one of these availability states:
+
+- **stored**: bundled bytes were saved in the configured private Supabase
+  bucket;
+- **inline**: complete text, such as a Claude artifact or extracted attachment
+  text, is stored in the database;
+- **metadata only**: the provider described the file but omitted its bytes;
+- **unavailable**: bytes were present but could not be stored.
+
+The conversation reader shows available artifacts and files on demand. HTML
+and SVG are displayed as source or downloaded; they are never executed in the
+ChatArchive page.
+
+Provider export contents vary by account type and can change. A missing file is
+reported as an import note rather than fetched from an expiring or
+authenticated provider URL. ChatArchive cannot reconstruct bytes that the
+provider did not include.
+
+Binary bundle resources require a configured private Supabase Storage bucket.
+Without one, conversations and inline artifacts still import, while bundled
+binary resources are marked unavailable.
 
 ---
 
