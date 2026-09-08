@@ -47,9 +47,13 @@ export default function ConversationResources({
 
   useEffect(() => {
     let cancelled = false;
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.current.clear();
     setLoading(true);
     setError(null);
     setResources([]);
+    setPreviewText({});
+    setPreviewImages({});
 
     apiFetch(`${API_URL}/conversations/${conversationId}/resources`)
       .then(async (response) => {
