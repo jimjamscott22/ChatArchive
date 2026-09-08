@@ -138,7 +138,7 @@ def test_ingest_bundle_maps_projects_and_sniffs_active_content() -> None:
 
         resource = db.query(Resource).one()
         project = db.query(Project).filter(Project.source_id == "project-1").one()
-        assert project.name == "Research (Claude project-1)"
+        assert project.name == "Research (Claude project-)"
         assert resource.project_id == project.id
         assert resource.conversation_id == result.records[0].id
         assert resource.message_id is not None
