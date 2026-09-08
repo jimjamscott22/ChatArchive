@@ -58,7 +58,7 @@ describe("ConversationResources", () => {
   });
 
   it("renders imported HTML as inert source text", async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
       if (String(input).includes("/conversations/4/resources")) {
         return response({
           json: async () => ({

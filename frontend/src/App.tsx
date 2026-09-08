@@ -2963,7 +2963,7 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
               <ul>
                 {bundleResult.warnings.map((warning, index) => (
                   <li key={`${warning.code}-${warning.entry || index}`}>
-                    <strong>{warning.code.replaceAll("_", " ").toLowerCase()}</strong>
+                    <strong>{warning.code.split("_").join(" ").toLowerCase()}</strong>
                     <span>{warning.message}</span>
                     {warning.entry && <code>{warning.entry}</code>}
                   </li>
