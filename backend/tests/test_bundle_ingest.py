@@ -125,6 +125,7 @@ def test_ingest_bundle_maps_projects_and_sniffs_active_content() -> None:
             {"mislabelled.png": b"<!doctype html><script>alert(1)</script>"}
         )
         with BundleReader("export.zip", archive) as reader:
+            bundle.inventory = reader.inventory
             result = ingest_parsed_bundle(
                 db,
                 bundle,
