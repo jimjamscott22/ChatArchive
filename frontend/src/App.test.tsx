@@ -335,7 +335,9 @@ describe("App UI improvements", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /import from chatgpt/i }));
 
     expect(await within(dialog).findByText(/bundle imported with some unavailable resources/i)).toBeInTheDocument();
-    expect(within(dialog).getByText("2", { selector: "strong" })).toBeInTheDocument();
+    expect(within(dialog).getByText("conversations added").parentElement).toHaveTextContent(
+      "2conversations added",
+    );
     expect(within(dialog).getByText(/provider export omitted one file/i)).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([url]) => String(url).includes("/import/chatgpt/bundle")),
