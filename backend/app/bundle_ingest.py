@@ -59,11 +59,13 @@ def ingest_parsed_bundle(
     )
 
     conversation_values = copy.deepcopy(bundle.conversations)
+    provider_project_ids: dict[tuple[str, str], int] = {}
     for conversation in conversation_values:
         source_project_id = conversation.pop("source_project_id", None)
         project = projects_by_source_id.get(str(source_project_id))
         if project is not None:
             conversation["project_id"] = project.id
+            provider_project_ids[(conversation["source"], str(conversation["source_id"]))] = project.id
 
     records, skipped_count, merged_count = ingest_conversations(
         db,
@@ -71,6 +73,11 @@ def ingest_parsed_bundle(
         import_record,
         settings,
     )
+    # The shared ingester does not apply bundle project metadata to merged rows.
+    for record in records:
+        project_id = provider_project_ids.get((record.source, str(record.source_id)))
+        if project_id is not None:
+            record.project_id = project_id
     db.flush()
 
     conversations_by_source_id = {
@@ -136,6 +143,14 @@ def ingest_parsed_bundle(
             else None
         )
         if existing:
+            if (
+                existing.availability == ResourceAvailability.STORED.value
+                and existing.storage_path
+                and not values["storage_path"]
+            ):
+                # Omitted bytes or a failed replacement must not hide stored content.
+                for key in ("storage_path", "availability", "byte_size", "sha256", "mime_type"):
+                    values[key] = getattr(existing, key)
             for key, value in values.items():
                 setattr(existing, key, value)
             resource = existing
@@ -334,11 +349,14 @@ def _find_existing_resource(
         Resource.source == values["source"],
         Resource.conversation_id == values["conversation_id"],
     )
-    if values["source_id"]:
-        return query.filter(Resource.source_id == values["source_id"]).first()
     if values["logical_id"]:
         return query.filter(
             Resource.logical_id == values["logical_id"],
+            Resource.version_index == values["version_index"],
+        ).first()
+    if values["source_id"]:
+        return query.filter(
+            Resource.source_id == values["source_id"],
             Resource.version_index == values["version_index"],
         ).first()
     if values["sha256"]:

@@ -17,6 +17,10 @@ type ResourceSummary = {
 
 type ResourceListResponse = {
   items: ResourceSummary[];
+  page: number;
+  pages: number;
+  total: number;
+  page_size: number;
 };
 
 function ResourceIcon({ resource }: { resource: ResourceSummary }) {
@@ -55,17 +59,27 @@ export default function ConversationResources({
     setPreviewText({});
     setPreviewImages({});
 
-    apiFetch(`${API_URL}/conversations/${conversationId}/resources`)
-      .then(async (response) => {
+    const loadResources = async () => {
+      const items: ResourceSummary[] = [];
+      let page = 1;
+      let pages = 1;
+      do {
+        const endpoint = `${API_URL}/conversations/${conversationId}/resources`;
+        const response = await apiFetch(page === 1 ? endpoint : `${endpoint}?page=${page}`);
         if (!response.ok) {
           const body = await response.json().catch(() => null);
           throw new Error(apiErrorMessage(body, "Unable to load resources"));
         }
-        return response.json() as Promise<ResourceListResponse>;
-      })
-      .then((data) => {
-        if (!cancelled) setResources(data.items);
-      })
+        const data = await response.json() as ResourceListResponse;
+        if (cancelled) return;
+        items.push(...data.items);
+        pages = data.pages;
+        page += 1;
+      } while (page <= pages);
+      setResources(items);
+    };
+
+    loadResources()
       .catch((reason: unknown) => {
         if (!cancelled) {
           setError(reason instanceof Error ? reason.message : "Unable to load resources");

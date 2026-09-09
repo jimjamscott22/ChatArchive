@@ -5,6 +5,7 @@ import json
 import zipfile
 from typing import Any
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from app.importers.bundle_types import (
     ResourceAvailability,
     ResourceKind,
 )
-from app.models import Base, Conversation, ImportHistory, Message, Project, Resource
+from app.models import Base, Conversation, ImportHistory, ImportSettings, Message, Project, Resource
 
 
 def make_zip(entries: dict[str, bytes]) -> bytes:
@@ -151,3 +152,131 @@ def test_ingest_bundle_maps_projects_and_sniffs_active_content() -> None:
         assert manifest["inventory"][0]["path"] == "mislabelled.png"
         assert manifest["inventory"][0]["byte_size"] == 40
         assert manifest["warnings"] == []
+
+
+@pytest.fixture
+def db():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
+
+
+def reimport_bundle(db, bundle, entries=None, uploader=None):
+    """Exercise bundle merging with an ingester that returns existing rows."""
+    history = ImportHistory(
+        filename="export.zip", source_type=bundle.source,
+        file_format="zip", status="processing",
+    )
+    db.add(history)
+    db.flush()
+
+    def existing_conversations(session, parsed, import_record, settings):
+        records = [
+            session.query(Conversation).filter_by(
+                source=item["source"], source_id=item["source_id"],
+            ).one()
+            for item in parsed
+        ]
+        return records, 0, len(records)
+
+    with BundleReader("export.zip", make_zip(entries or {})) as reader:
+        result = ingest_parsed_bundle(
+            db, bundle, reader, history,
+            ImportSettings(auto_merge_duplicates=True, keep_separate=False),
+            existing_conversations, uploader or (lambda *args: None),
+        )
+    db.flush()
+    return result
+
+
+@pytest.mark.parametrize("has_project", [False, True])
+@pytest.mark.parametrize("provider_project", ["project-1", "unknown", None])
+def test_merge_applies_only_resolved_provider_project(db, has_project, provider_project):
+    manual_project = Project(name="Manual")
+    db.add(manual_project)
+    db.flush()
+    original_id = manual_project.id if has_project else None
+    conversation = Conversation(
+        source="claude", source_id="conversation-1", raw_json="{}",
+        project_id=original_id,
+    )
+    db.add(conversation)
+    bundle = ParsedBundle(
+        source="claude",
+        conversations=[{
+            "source": "claude", "source_id": "conversation-1",
+            "source_project_id": provider_project,
+        }],
+        projects=[ParsedProject(source="claude", source_id="project-1", name="Provider")],
+    )
+
+    reimport_bundle(db, bundle)
+    db.expire_all()
+
+    provider = db.query(Project).filter_by(source_id="project-1").one()
+    assert conversation.project_id == (provider.id if provider_project == "project-1" else original_id)
+
+
+@pytest.mark.parametrize("replacement", ["omitted", "failed", "stored"])
+def test_merge_preserves_stored_content_until_replacement_is_stored(db, replacement):
+    history = ImportHistory(
+        filename="old.zip", source_type="claude", file_format="zip", status="success",
+    )
+    db.add(history)
+    db.flush()
+    existing = Resource(
+        import_history_id=history.id,
+        source="claude", source_id="file-1", kind="attachment",
+        availability="stored", storage_path="imports/1/resources/old/file.txt",
+        byte_size=3, sha256="old-hash", mime_type="text/plain", title="Old title",
+    )
+    db.add(existing)
+    bundle = ParsedBundle(source="claude", resources=[ParsedResource(
+        source="claude", source_id="file-1", kind=ResourceKind.ATTACHMENT,
+        availability=ResourceAvailability.METADATA_ONLY, title="New title",
+        archive_entry="file.txt" if replacement != "omitted" else None,
+        filename="file.txt", mime_type="application/octet-stream",
+    )])
+    new_path = "imports/2/resources/new/file.txt"
+    result = reimport_bundle(
+        db, bundle, {"file.txt": b"replacement"},
+        (lambda *args: {"success": True, "path": new_path}) if replacement == "stored" else None,
+    )
+    db.expire_all()
+    resource = db.query(Resource).one()
+    assert resource.title == "New title"
+    assert resource.availability == "stored"
+    assert resource.storage_path == (new_path if replacement == "stored" else "imports/1/resources/old/file.txt")
+    if replacement != "stored":
+        assert (resource.byte_size, resource.sha256, resource.mime_type) == (3, "old-hash", "text/plain")
+    else:
+        assert resource.byte_size == 11
+        assert resource.sha256 != "old-hash"
+    assert result.resource_counts["stored"] == 1
+    assert result.status == ("partial" if replacement == "failed" else "success")
+
+
+@pytest.mark.parametrize("logical_id", ["artifact-1", None])
+def test_merge_keeps_artifact_versions_distinct_and_reimport_is_idempotent(db, logical_id):
+    bundle = ParsedBundle(source="claude", resources=[
+        ParsedResource(
+            source="claude", source_id="artifact-1", logical_id=logical_id,
+            version_index=version, kind=ResourceKind.ARTIFACT,
+            availability=ResourceAvailability.INLINE, text_content=f"Revision {version}",
+        )
+        for version in (1, 2)
+    ])
+
+    reimport_bundle(db, bundle)
+    rows = db.query(Resource).order_by(Resource.version_index).all()
+    assert [(row.version_index, row.text_content) for row in rows] == [(1, "Revision 1"), (2, "Revision 2")]
+    original_ids = [row.id for row in rows]
+
+    bundle.resources[1].text_content = "Updated revision 2"
+    reimport_bundle(db, bundle)
+    db.expire_all()
+    rows = db.query(Resource).order_by(Resource.version_index).all()
+    assert [row.id for row in rows] == original_ids
+    assert [row.text_content for row in rows] == ["Revision 1", "Updated revision 2"]

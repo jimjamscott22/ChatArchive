@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from storage3.exceptions import StorageApiError
+
 from app.supabase_client import (
     get_supabase_client,
     is_supabase_configured,
@@ -128,15 +130,22 @@ def upload_resource_file(
                 "upsert": "false",
             },
         )
-        return {
-            "success": True,
-            "path": storage_path,
-            "bucket": SUPABASE_BUCKET_NAME,
-            "size": len(content),
-        }
+    except StorageApiError as exc:
+        # This path identifies identical bytes within one import. Reuse the object
+        # on a duplicate response, without overwriting it or hiding other errors.
+        if exc.code not in {"Duplicate", "KeyAlreadyExists", "ResourceAlreadyExists", "already_exists"}:
+            logger.error("Failed to upload imported resource: %s", exc)
+            return {"success": False, "error": str(exc)}
     except Exception as exc:
         logger.error("Failed to upload imported resource: %s", exc)
         return {"success": False, "error": str(exc)}
+
+    return {
+        "success": True,
+        "path": storage_path,
+        "bucket": SUPABASE_BUCKET_NAME,
+        "size": len(content),
+    }
 
 
 def list_storage_files(
