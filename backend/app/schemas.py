@@ -30,6 +30,8 @@ class ProjectResponse(ProjectBase):
     id: int
     created_at: datetime
     conversation_count: int = 0
+    source: str | None = None
+    source_id: str | None = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -169,6 +171,9 @@ class ImportHistoryResponse(BaseModel):
     created_at: datetime
     imported_count: int
     error_message: str | None = None
+    resource_count: int = 0
+    unavailable_resource_count: int = 0
+    warning_count: int = 0
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -204,6 +209,77 @@ class ImportSettingsUpdate(BaseModel):
     auto_merge_duplicates: bool | None = None
     keep_separate: bool | None = None
     skip_empty_conversations: bool | None = None
+
+
+# ============ Bundle Resource Schemas ============
+
+class ResourceSummary(BaseModel):
+    id: int
+    import_history_id: int
+    project_id: int | None = None
+    conversation_id: int | None = None
+    message_id: int | None = None
+    source: str
+    source_id: str | None = None
+    logical_id: str | None = None
+    version_index: int | None = None
+    kind: str
+    title: str | None = None
+    filename: str | None = None
+    mime_type: str | None = None
+    availability: str
+    byte_size: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResourceDetail(ResourceSummary):
+    sha256: str | None = None
+    text_content: str | None = None
+    metadata: dict = {}
+
+
+class ResourceListResponse(BaseModel):
+    items: list[ResourceSummary]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class BundleConversationCounts(BaseModel):
+    imported: int = 0
+    updated: int = 0
+    skipped: int = 0
+
+
+class BundleProjectCounts(BaseModel):
+    created: int = 0
+    matched: int = 0
+
+
+class BundleResourceCounts(BaseModel):
+    stored: int = 0
+    inline: int = 0
+    metadata_only: int = 0
+    unavailable: int = 0
+
+
+class BundleImportWarning(BaseModel):
+    code: str
+    message: str
+    entry: str | None = None
+    context: dict = {}
+
+
+class BundleImportResponse(BaseModel):
+    import_history_id: int
+    status: str
+    conversations: BundleConversationCounts
+    projects: BundleProjectCounts
+    resources: BundleResourceCounts
+    warnings: list[BundleImportWarning] = []
 
 
 # ============ Duplicate Detection Schemas ============

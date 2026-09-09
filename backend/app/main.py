@@ -13,7 +13,7 @@ from typing import Any, Literal, List
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
@@ -26,9 +26,18 @@ from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
 from app.importers.gemini import parse_gemini_export
 from app.importers.copilot import parse_copilot_export
-from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag, Project
+from app.importers.bundle_reader import BundleReader, BundleValidationError
+from app.importers.bundles import parse_export_bundle
+from app.bundle_ingest import ingest_parsed_bundle
+from app.models import Base, Conversation, Message, ImportHistory, ImportSettings, Tag, ConversationTag, Project, Resource
 from app.supabase_client import get_connection_info, get_dashboard_url, is_supabase_configured
-from app.storage import upload_export_file, list_storage_files
+from app.storage import (
+    delete_storage_file,
+    download_storage_file,
+    list_storage_files,
+    safe_storage_filename,
+    upload_export_file,
+)
 from app.query_filters import apply_conversation_filters
 from app.import_policy import import_filename_rejection, should_auto_merge
 from app.schemas import (
@@ -56,6 +65,14 @@ from app.schemas import (
     ProjectResponse,
     ProjectListResponse,
     MoveToProjectRequest,
+    BundleImportResponse,
+    BundleConversationCounts,
+    BundleProjectCounts,
+    BundleResourceCounts,
+    BundleImportWarning,
+    ResourceDetail,
+    ResourceListResponse,
+    ResourceSummary,
 )
 from app.tagger import get_tagging_engine
 
@@ -932,6 +949,112 @@ def get_analytics(
     }
 
 
+@app.post("/import/{source}/bundle", response_model=BundleImportResponse)
+async def import_export_bundle(
+    source: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> BundleImportResponse:
+    """Import conversations, projects, and resources from a provider ZIP."""
+    if source not in ("chatgpt", "claude"):
+        raise HTTPException(
+            status_code=400,
+            detail="Bundle imports are supported for ChatGPT and Claude only",
+        )
+    filename = file.filename or "export.zip"
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Expected a .zip export bundle")
+
+    raw = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
+    reader: BundleReader | None = None
+    try:
+        reader = BundleReader(filename, raw)
+        bundle = parse_export_bundle(source, reader)
+    except BundleValidationError as exc:
+        if reader is not None:
+            reader.close()
+        raise HTTPException(
+            status_code=400,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+
+    settings = get_import_settings_record(db)
+    import_record = ImportHistory(
+        filename=filename,
+        source_type=source,
+        file_format="zip",
+        status="processing",
+        imported_count=0,
+    )
+    db.add(import_record)
+    db.commit()
+    db.refresh(import_record)
+
+    try:
+        result = ingest_parsed_bundle(
+            db,
+            bundle,
+            reader,
+            import_record,
+            settings,
+            _ingest_parsed_conversations,
+        )
+        db.commit()
+    except BundleValidationError as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = str(exc)
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Database constraint violation"
+        db.commit()
+        logger.exception("Bundle import constraint failure for %s", filename)
+        raise HTTPException(status_code=409, detail="Bundle conflicts with stored data") from exc
+    except Exception as exc:
+        db.rollback()
+        import_record.status = "failure"
+        import_record.error_message = "Unexpected bundle import failure"
+        db.commit()
+        logger.exception("Unexpected bundle import failure for %s", filename)
+        raise HTTPException(status_code=500, detail="Bundle import failed") from exc
+    finally:
+        reader.close()
+
+    imported_count = len(result.records) - result.merged_conversations
+    return BundleImportResponse(
+        import_history_id=import_record.id,
+        status=result.status,
+        conversations=BundleConversationCounts(
+            imported=imported_count,
+            updated=result.merged_conversations,
+            skipped=result.skipped_conversations,
+        ),
+        projects=BundleProjectCounts(
+            created=result.projects_created,
+            matched=result.projects_matched,
+        ),
+        resources=BundleResourceCounts(**result.resource_counts),
+        warnings=[
+            BundleImportWarning(
+                code=warning.code,
+                message=warning.message,
+                entry=warning.entry,
+                context=warning.context,
+            )
+            for warning in result.warnings
+        ],
+    )
+
+
 @app.post("/import/chatgpt", response_model=list[ConversationResponse])
 async def import_chatgpt(
     file: UploadFile = File(...),
@@ -1275,6 +1398,137 @@ async def import_copilot(
     return records
 
 
+# ============ Resource Endpoints ============
+
+def _resource_list_response(
+    query: Any,
+    page: int,
+    page_size: int,
+) -> ResourceListResponse:
+    total = query.count()
+    rows = (
+        query.order_by(Resource.created_at.desc(), Resource.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return ResourceListResponse(
+        items=[ResourceSummary.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size,
+    )
+
+
+@app.get(
+    "/conversations/{conversation_id:int}/resources",
+    response_model=ResourceListResponse,
+)
+def list_conversation_resources(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> ResourceListResponse:
+    if not db.query(Conversation.id).filter(Conversation.id == conversation_id).first():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return _resource_list_response(
+        db.query(Resource).filter(Resource.conversation_id == conversation_id),
+        page,
+        page_size,
+    )
+
+
+@app.get("/projects/{project_id:int}/resources", response_model=ResourceListResponse)
+def list_project_resources(
+    project_id: int,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> ResourceListResponse:
+    if not db.query(Project.id).filter(Project.id == project_id).first():
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _resource_list_response(
+        db.query(Resource).filter(Resource.project_id == project_id),
+        page,
+        page_size,
+    )
+
+
+@app.get("/resources/{resource_id:int}", response_model=ResourceDetail)
+def get_resource(
+    resource_id: int,
+    db: Session = Depends(get_db),
+) -> ResourceDetail:
+    resource = db.query(Resource).filter(Resource.id == resource_id).first()
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    try:
+        metadata = json.loads(resource.metadata_json or "{}")
+    except json.JSONDecodeError:
+        metadata = {}
+    summary = ResourceSummary.model_validate(resource).model_dump()
+    return ResourceDetail(
+        **summary,
+        sha256=resource.sha256,
+        text_content=resource.text_content,
+        metadata=metadata,
+    )
+
+
+@app.get("/resources/{resource_id:int}/content")
+def get_resource_content(
+    resource_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    resource = db.query(Resource).filter(Resource.id == resource_id).first()
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    if resource.availability in ("metadata_only", "unavailable"):
+        raise HTTPException(
+            status_code=409,
+            detail="Resource content was not included in the provider export",
+        )
+
+    if resource.storage_path:
+        payload = download_storage_file(resource.storage_path)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Stored resource content not found")
+    elif resource.text_content is not None:
+        payload = resource.text_content.encode("utf-8")
+    else:
+        raise HTTPException(status_code=409, detail="Resource has no available content")
+
+    mime_type = resource.mime_type or (
+        "text/plain; charset=utf-8"
+        if resource.text_content is not None
+        else "application/octet-stream"
+    )
+    safe_filename = safe_storage_filename(
+        resource.filename or resource.title or f"resource-{resource.id}"
+    )
+    force_attachment = (
+        mime_type in ("text/html", "image/svg+xml")
+        or not (
+            mime_type.startswith("text/")
+            or mime_type.startswith("image/png")
+            or mime_type.startswith("image/jpeg")
+            or mime_type.startswith("image/gif")
+            or mime_type.startswith("image/webp")
+        )
+    )
+    disposition = "attachment" if force_attachment else "inline"
+    return Response(
+        content=payload,
+        media_type=mime_type,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{safe_filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 # ============ Import History Endpoints ============
 
 @app.get("/import/history", response_model=ImportHistoryListResponse)
@@ -1346,6 +1600,17 @@ def delete_import_history(
         raise HTTPException(status_code=404, detail="Import history record not found")
     
     deleted_conversations = 0
+    candidate_storage_paths = {
+        path
+        for (path,) in db.query(Resource.storage_path)
+        .filter(
+            Resource.import_history_id == history_id,
+            Resource.storage_path.isnot(None),
+        )
+        .distinct()
+        .all()
+        if path
+    }
     
     # If delete_conversations is True, delete all conversations from this import
     if delete_conversations:
@@ -1363,11 +1628,28 @@ def delete_import_history(
     # Delete the history record
     db.delete(history_item)
     db.commit()
+
+    deleted_resource_files = 0
+    storage_cleanup_failures = 0
+    for storage_path in candidate_storage_paths:
+        surviving_reference = (
+            db.query(Resource.id)
+            .filter(Resource.storage_path == storage_path)
+            .first()
+        )
+        if surviving_reference:
+            continue
+        if delete_storage_file(storage_path):
+            deleted_resource_files += 1
+        else:
+            storage_cleanup_failures += 1
     
     return {
         "deleted": True,
         "import_id": history_id,
         "deleted_conversations": deleted_conversations,
+        "deleted_resource_files": deleted_resource_files,
+        "storage_cleanup_failures": storage_cleanup_failures,
         "message": f"Deleted import history record" + 
                    (f" and {deleted_conversations} conversations" if delete_conversations else "")
     }

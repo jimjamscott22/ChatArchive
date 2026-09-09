@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any
+
+from storage3.exceptions import StorageApiError
 
 from app.supabase_client import (
     get_supabase_client,
@@ -12,6 +15,14 @@ from app.supabase_client import (
 )
 
 logger = logging.getLogger(__name__)
+MAX_STORAGE_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+def safe_storage_filename(filename: str | None) -> str:
+    """Return a short filename safe for object paths and response headers."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", filename or "resource")
+    cleaned = cleaned.strip("._") or "resource"
+    return cleaned[:180]
 
 
 def upload_export_file(
@@ -47,8 +58,7 @@ def upload_export_file(
             content = content.encode('utf-8')
         
         # Skip upload if file exceeds Supabase free-tier limit (50 MB)
-        MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-        if len(content) > MAX_UPLOAD_BYTES:
+        if len(content) > MAX_STORAGE_UPLOAD_BYTES:
             size_mb = len(content) / (1024 * 1024)
             logger.warning(
                 f"Skipping Supabase storage upload for {filename}: "
@@ -85,6 +95,57 @@ def upload_export_file(
             "success": False,
             "error": str(e),
         }
+
+
+def upload_resource_file(
+    import_history_id: int,
+    sha256: str,
+    filename: str | None,
+    content: bytes,
+    mime_type: str | None,
+) -> dict[str, Any] | None:
+    """Upload an imported resource to the configured private bucket."""
+    if not is_supabase_configured():
+        return None
+    if len(content) > MAX_STORAGE_UPLOAD_BYTES:
+        return {
+            "success": False,
+            "error": "File too large for storage upload (>50 MB)",
+        }
+
+    client = get_supabase_client()
+    if not client:
+        return None
+
+    safe_filename = safe_storage_filename(filename)
+    storage_path = (
+        f"imports/{import_history_id}/resources/{sha256}/{safe_filename}"
+    )
+    try:
+        client.storage.from_(SUPABASE_BUCKET_NAME).upload(
+            path=storage_path,
+            file=content,
+            file_options={
+                "content-type": mime_type or "application/octet-stream",
+                "upsert": "false",
+            },
+        )
+    except StorageApiError as exc:
+        # This path identifies identical bytes within one import. Reuse the object
+        # on a duplicate response, without overwriting it or hiding other errors.
+        if exc.code not in {"Duplicate", "KeyAlreadyExists", "ResourceAlreadyExists", "already_exists"}:
+            logger.error("Failed to upload imported resource: %s", exc)
+            return {"success": False, "error": str(exc)}
+    except Exception as exc:
+        logger.error("Failed to upload imported resource: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+    return {
+        "success": True,
+        "path": storage_path,
+        "bucket": SUPABASE_BUCKET_NAME,
+        "size": len(content),
+    }
 
 
 def list_storage_files(

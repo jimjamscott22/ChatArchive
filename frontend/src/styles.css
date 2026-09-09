@@ -4996,6 +4996,230 @@ button.danger:disabled {
   }
 }
 
+/* Export bundle resources */
+.conversation-resources {
+  margin: 28px 0 12px;
+  padding: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.resource-section-heading,
+.resource-title-row,
+.resource-actions {
+  display: flex;
+  align-items: center;
+}
+
+.resource-section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.resource-section-heading h3,
+.bundle-warning-list h3 {
+  margin: 3px 0 0;
+  color: var(--text-primary);
+}
+
+.resource-count {
+  min-width: 30px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  text-align: center;
+  font-weight: 700;
+}
+
+.resource-list {
+  display: grid;
+  gap: 10px;
+}
+
+.resource-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-elevated);
+}
+
+.resource-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.resource-title-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resource-copy {
+  min-width: 0;
+}
+
+.resource-copy strong {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.resource-copy > p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.resource-copy .resource-omission {
+  color: var(--text-secondary);
+}
+
+.resource-availability {
+  padding: 3px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.resource-availability.stored,
+.resource-availability.inline {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.resource-actions {
+  align-self: start;
+  gap: 7px;
+}
+
+.resource-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.resource-text-preview {
+  max-height: 320px;
+  margin: 12px 0 0;
+  padding: 13px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.resource-image-preview {
+  display: block;
+  max-width: min(100%, 720px);
+  max-height: 420px;
+  margin-top: 12px;
+  border-radius: 9px;
+  object-fit: contain;
+}
+
+.resource-state {
+  color: var(--text-secondary);
+}
+
+.bundle-import-summary {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.bundle-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.bundle-summary-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-elevated);
+}
+
+.bundle-summary-grid strong {
+  color: var(--accent);
+  font-size: 1.25rem;
+}
+
+.bundle-summary-grid span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.bundle-warning-list {
+  margin-top: 16px;
+}
+
+.bundle-warning-list ul {
+  display: grid;
+  max-height: 240px;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.bundle-warning-list li {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
+  background: var(--accent-subtle);
+}
+
+.bundle-warning-list code {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .conversation-resources {
+    padding: 14px;
+  }
+
+  .resource-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .resource-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .bundle-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .overview-action-grid {
   display: flex;
   flex-wrap: wrap;

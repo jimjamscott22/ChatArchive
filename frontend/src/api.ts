@@ -45,6 +45,10 @@ export function apiErrorMessage(errorData: unknown, fallback: string): string {
   if (typeof detail === "string" && detail.trim()) {
     return detail;
   }
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = String((detail as { message: unknown }).message);
+    if (message.trim()) return message;
+  }
   if (Array.isArray(detail)) {
     const parts = detail
       .map((item) => {

@@ -28,6 +28,23 @@
 
 The frontend expects the API at `http://localhost:8000`.
 
+## Export bundle resources
+
+Apply the additive PostgreSQL migration before deploying bundle import:
+
+```bash
+cd backend
+uv run python migrate_add_bundle_resources.py
+```
+
+The migration is idempotent. It adds provider project provenance, import
+manifest counters, the `resources` table, and resource search indexes.
+
+Bundled binary resources use the configured `SUPABASE_BUCKET_NAME`. The bucket
+must be private; resource content is downloaded by the backend and served
+through bearer-token-protected API endpoints. Do not use public object URLs for
+imported resources.
+
 ## One-command local run
 
 From the repo root:
