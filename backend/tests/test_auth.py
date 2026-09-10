@@ -1,10 +1,13 @@
 """Authentication boundary tests without database or local dotenv access."""
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from pathlib import Path
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
 
 @pytest.fixture
@@ -46,3 +49,32 @@ def test_missing_or_invalid_credentials_are_rejected(auth, header):
 
 def test_valid_bearer_token_is_accepted(auth):
     assert auth.is_authorized("Bearer test-api-token")
+
+
+def test_unauthorized_response_includes_cors_header(auth):
+    app = FastAPI()
+    auth.configure_api_middleware(
+        app,
+        allowed_origins=["http://localhost:5173"],
+    )
+
+    @app.get("/stats")
+    def protected_route():
+        return {"status": "ok"}
+
+    async def request():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.get(
+                "/stats",
+                headers={"Origin": "http://localhost:5173"},
+            )
+
+    response = asyncio.run(request())
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

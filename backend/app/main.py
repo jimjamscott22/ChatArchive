@@ -11,16 +11,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, List
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, joinedload
 import uvicorn
 
-from app.auth import is_authorized, is_protected_path
+from app.auth import configure_api_middleware
 from app.database import get_db, DATABASE_MODE
 from app.importers.chatgpt import parse_chatgpt_export
 from app.importers.claude import parse_claude_export
@@ -83,25 +82,10 @@ TITLE_MAX_LEN = 255
 
 app = FastAPI(title="ChatArchive API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+configure_api_middleware(
+    app,
+    allowed_origins=["http://localhost:5173"],
 )
-
-
-@app.middleware("http")
-async def enforce_api_token(request: Request, call_next):
-    # OPTIONS must always pass through unchecked: the browser's CORS preflight
-    # for a request carrying an Authorization header is itself unauthenticated,
-    # and it needs to reach CORSMiddleware to get its Access-Control-Allow-*
-    # headers or every authenticated fetch fails CORS before this check matters.
-    if request.method != "OPTIONS" and is_protected_path(request.url.path):
-        if not is_authorized(request.headers.get("authorization")):
-            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
-    return await call_next(request)
 
 
 @app.get("/health")
