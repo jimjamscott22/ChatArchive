@@ -201,6 +201,14 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(
+    () => Number(localStorage.getItem('chatarchive-sidebar-width')) || 268
+  );
+  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(
+    () => (localStorage.getItem('chatarchive-sidebar-position') as 'left' | 'right') || 'left'
+  );
+  const [isResizing, setIsResizing] = useState(false);
+  const resizingRef = useRef(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [selectedConversationIndex, setSelectedConversationIndex] = useState<number>(-1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -372,6 +380,42 @@ export default function App() {
       setSelectedConversationIndex(index);
     }
   }, [selectedConversation, conversations]);
+
+  // Sidebar resize handlers
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+  };
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizingRef.current) return;
+      const raw = sidebarPosition === 'left' ? e.clientX : window.innerWidth - e.clientX;
+      const next = Math.min(420, Math.max(200, raw));
+      setSidebarWidth(next);
+    }
+    function onUp() {
+      if (!resizingRef.current) return;
+      resizingRef.current = false;
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      localStorage.setItem('chatarchive-sidebar-width', String(sidebarWidth));
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [sidebarPosition, sidebarWidth]);
+
+  const toggleSidebarPosition = () => {
+    const next = sidebarPosition === 'left' ? 'right' : 'left';
+    setSidebarPosition(next);
+    localStorage.setItem('chatarchive-sidebar-position', next);
+  };
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
@@ -1342,10 +1386,10 @@ export default function App() {
   }
 
   return (
-    <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}`}>
+    <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
       <div className="theme-transition-wash" key={theme} aria-hidden="true" />
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { width: sidebarWidth } : undefined}>
         <div className="sidebar-header">
           <div className="logo">
             <Sparkles size={20} />
@@ -1870,6 +1914,13 @@ export default function App() {
           )}
         </div>
 
+        {/* Sidebar resize handle */}
+        <div
+          className="sidebar-resize-handle"
+          onMouseDown={startResize}
+          title="Drag to resize"
+        />
+
         {/* Sidebar collapse handle */}
         <button
           className="sidebar-collapse-handle"
@@ -1887,6 +1938,9 @@ export default function App() {
             <div className="main-header-leading">
               <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
                 <Menu size={20} />
+              </button>
+              <button className="icon-btn" onClick={toggleSidebarPosition} title="Move sidebar to other side">
+                {sidebarPosition === 'left' ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
               </button>
               {selectedConversation && (
                 <button
