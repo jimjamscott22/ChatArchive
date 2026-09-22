@@ -1389,7 +1389,7 @@ export default function App() {
     <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
       <div className="theme-transition-wash" key={theme} aria-hidden="true" />
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { width: sidebarWidth } : undefined}>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}>
         <div className="sidebar-header">
           <div className="logo">
             <Sparkles size={20} />

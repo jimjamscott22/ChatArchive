@@ -663,11 +663,8 @@ body {
 }
 
 /* Sidebar on the right side */
-.app-container.sidebar-right {
-  flex-direction: row-reverse;
-}
-
 .app-container.sidebar-right .sidebar {
+  order: 2;
   border-right: none;
   border-left: 1px solid var(--border-color);
   box-shadow: -14px 0 42px rgba(0, 0, 0, 0.12);
@@ -722,7 +719,7 @@ body {
 
 /* ===== SIDEBAR ===== */
 .sidebar {
-  width: 268px;
+  width: var(--sidebar-width, 268px);
   background: var(--sidebar-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
