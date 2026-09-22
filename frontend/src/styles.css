@@ -728,11 +728,11 @@ body {
   position: relative;
   flex-shrink: 0;
   box-shadow: 14px 0 42px rgba(0, 0, 0, 0.12);
-  transition: none;
+  transition: width 0.3s ease;
 }
 
-.sidebar:not(.resizing) {
-  transition: width 0.3s ease;
+.sidebar.resizing {
+  transition: none;
 }
 
 /* Hide sidebar entirely in full-width mode */

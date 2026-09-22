@@ -201,12 +201,21 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(
-    () => Number(localStorage.getItem('chatarchive-sidebar-width')) || 268
-  );
-  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(
-    () => (localStorage.getItem('chatarchive-sidebar-position') as 'left' | 'right') || 'left'
-  );
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('chatarchive-sidebar-width');
+      const parsed = saved ? Number(saved) : null;
+      return parsed && parsed >= 200 && parsed <= 420 ? parsed : 268;
+    } catch { /* ignore */ }
+    return 268;
+  });
+  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>(() => {
+    try {
+      const saved = localStorage.getItem('chatarchive-sidebar-position');
+      if (saved === 'left' || saved === 'right') return saved;
+    } catch { /* ignore */ }
+    return 'left';
+  });
   const [isResizing, setIsResizing] = useState(false);
   const resizingRef = useRef(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -392,6 +401,7 @@ export default function App() {
   useEffect(() => {
     function onMove(e: MouseEvent) {
       if (!resizingRef.current) return;
+      if (e.buttons === 0) { onUp(); return; }
       const raw = sidebarPosition === 'left' ? e.clientX : window.innerWidth - e.clientX;
       const next = Math.min(420, Math.max(200, raw));
       setSidebarWidth(next);
@@ -401,7 +411,9 @@ export default function App() {
       resizingRef.current = false;
       setIsResizing(false);
       document.body.style.cursor = '';
-      localStorage.setItem('chatarchive-sidebar-width', String(sidebarWidth));
+      try {
+        localStorage.setItem('chatarchive-sidebar-width', String(sidebarWidth));
+      } catch { /* ignore */ }
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -414,7 +426,9 @@ export default function App() {
   const toggleSidebarPosition = () => {
     const next = sidebarPosition === 'left' ? 'right' : 'left';
     setSidebarPosition(next);
-    localStorage.setItem('chatarchive-sidebar-position', next);
+    try {
+      localStorage.setItem('chatarchive-sidebar-position', next);
+    } catch { /* ignore */ }
   };
 
   const toggleTheme = () => {
