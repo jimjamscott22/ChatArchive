@@ -5432,3 +5432,38 @@ button.danger:disabled {
   padding: 24px;
   color: var(--text-secondary);
 }
+
+.action-feedback {
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.action-feedback p { margin: 0 0 10px; }
+.action-feedback-app {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  z-index: 600;
+  width: min(420px, calc(100vw - 40px));
+  box-shadow: var(--shadow-md);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+.feedback-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback-actions button {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.feedback-actions button:disabled { opacity: 0.6; cursor: wait; }
+.feedback-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.confirmation-modal { max-width: min(480px, calc(100vw - 24px)); }
+.confirmation-modal .modal-body p { line-height: 1.6; overflow-wrap: anywhere; }
+dialog.confirmation-modal {
+  min-width: 0;
+  width: min(480px, calc(100vw - 24px));
+  box-sizing: border-box;
+}

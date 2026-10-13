@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 type FetchMockOptions = {
+  action?: (url: string, init?: RequestInit) => Promise<Response> | undefined;
   search?: (query: string) => Promise<Response>;
   list?: () => Promise<Response>;
   duplicatesError?: boolean;
@@ -49,8 +50,11 @@ function jsonResponse(data: unknown, init?: { ok?: boolean; status?: number }) {
 }
 
 function installFetchMock(options: FetchMockOptions = {}) {
-  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+    const action = options.action?.(url, init);
+    if (action) return action;
 
     if (url.includes("/settings/import")) {
       return jsonResponse({
@@ -204,6 +208,79 @@ describe("App UI improvements", () => {
     vi.stubGlobal("open", vi.fn());
   });
 
+  it("cancels conversation deletion and keeps failures recoverable", async () => {
+    let deletes = 0;
+    installFetchMock({ action: (_url, init) => init?.method === "DELETE"
+      ? Promise.resolve(jsonResponse({}, { ok: ++deletes > 1, status: deletes > 1 ? 200 : 500 })) : undefined });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    fireEvent.click(screen.getByTitle("Delete conversation"));
+    let dialog = screen.getByRole("dialog", { name: "Delete conversation" });
+    expect(dialog).toHaveTextContent('Delete "Refactor search filters" and all its messages?');
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(deletes).toBe(0);
+    fireEvent.click(screen.getByTitle("Delete conversation"));
+    dialog = screen.getByRole("dialog", { name: "Delete conversation" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete conversation" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to delete conversation");
+    expect(screen.getByTitle("Delete conversation")).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(deletes).toBe(1);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Delete conversation" })).getByRole("button", { name: "Delete conversation" }));
+    await screen.findByText('Deleted "Refactor search filters".');
+    expect(deletes).toBe(2);
+    expect(alert).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("offers non-blocking auto-tag failure, retry, success, and dismissal", async () => {
+    let attempts = 0;
+    installFetchMock({ action: url => url.includes("/auto-tag")
+      ? Promise.resolve(jsonResponse({ tagged_count: 3 }, { ok: ++attempts > 1 })) : undefined });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /auto-tag all/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to auto-tag");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("Tagged 3 conversations.");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
+    expect(screen.queryByText("Tagged 3 conversations.")).not.toBeInTheDocument();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed project move open with its selection and allows retry", async () => {
+    let attempts = 0;
+    installFetchMock({ action: url => url.endsWith("/move")
+      ? Promise.resolve(jsonResponse({}, { ok: ++attempts > 1 })) : undefined });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    fireEvent.click(screen.getByTitle("More options"));
+    fireEvent.click(screen.getByRole("button", { name: /move to project/i }));
+    const select = await screen.findByLabelText("Move to:");
+    fireEvent.change(select, { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to move conversation");
+    expect(select).toHaveValue("none");
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await screen.findByText("Conversation moved to Uncategorized.");
+    expect(screen.queryByRole("dialog", { name: "Move to Project" })).not.toBeInTheDocument();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("confirms tag removal within the app", async () => {
+    let removals = 0;
+    installFetchMock({ action: (url, init) => url.endsWith("/tags/1") && init?.method === "DELETE"
+      ? Promise.resolve((removals++, jsonResponse({}))) : undefined });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove tag coding" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove tag" })).getByRole("button", { name: "Remove tag" }));
+    await screen.findByText("Tag removed from conversation.");
+    expect(removals).toBe(1);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it.each(["success", "empty", "failure"])("retains mounted rows during a search refresh ending in %s", async (outcome) => {
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>(resolve => { finish = resolve; });
@@ -246,6 +323,17 @@ describe("App UI improvements", () => {
     await act(async () => finish(jsonResponse({ items: [{ ...baseConversation, title: "Stale result" }], pages: 1 })));
     expect(screen.queryByRole("button", { name: "Stale result" })).not.toBeInTheDocument();
     await screen.findByRole("button", { name: "Latest result" });
+  });
+
+  it("cancels the pending search debounce when filters are cleared", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+    await screen.findByRole("button", { name: "Refactor search filters" });
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "old" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("q=old"))).toBe(false);
+    expect(screen.getByLabelText(/search conversations/i)).toHaveValue("");
   });
 
   it("uses skeletons only before the first successful list response", async () => {
@@ -399,7 +487,8 @@ describe("App UI improvements", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /manage projects/i }));
 
-    expect(await screen.findByRole("dialog", { name: /manage projects/i })).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Create New Project" });
+    expect(screen.getByRole("dialog", { name: /manage projects/i })).toBeInTheDocument();
   });
 
   it("closes the duplicates modal when Escape is pressed", async () => {
@@ -408,7 +497,7 @@ describe("App UI improvements", () => {
     fireEvent.click(await screen.findByRole("button", { name: /duplicates/i }));
     await screen.findByText(/find duplicate conversations/i);
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent(screen.getByRole("dialog", { name: "Find Duplicate Conversations" }), new Event("cancel", { cancelable: true }));
 
     await waitFor(() => {
       expect(screen.queryByText(/find duplicate conversations/i)).not.toBeInTheDocument();

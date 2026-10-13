@@ -16,15 +16,17 @@ export default function MoveToProjectModal({
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
     conversation.project?.id || null
   );
+  const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
 
   const handleMove = async () => {
+    setError(null);
     setMoving(true);
     try {
       await onMove(conversation.id, selectedProjectId);
       onClose();
     } catch (error) {
-      console.error("Failed to move conversation:", error);
+      setError(error instanceof Error ? error.message : "Failed to move conversation. Please try again.");
     } finally {
       setMoving(false);
     }
@@ -51,6 +53,7 @@ export default function MoveToProjectModal({
         <p><strong>Current Project:</strong> {conversation.project?.name || "Uncategorized"}</p>
       </div>
 
+      {error && <p className="status-error" role="alert">{error} Choose a project and use Move to try again.</p>}
       <div className="form-group">
         <label htmlFor="move-project-select"><strong>Move to:</strong></label>
         <select

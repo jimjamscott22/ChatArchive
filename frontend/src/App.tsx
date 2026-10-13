@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, lazy } from "react";
 import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home } from "lucide-react";
 import LazyFeature from "./components/LazyFeature";
+import useActionFeedback from "./components/useActionFeedback";
 import AuthGate from "./components/AuthGate";
 import { formatDateTime, getSourceInfo, orderMessages, type Message } from "./utils/conversationPresentation";
 import { renderHighlightedText } from "./utils/searchHighlight";
@@ -59,6 +60,8 @@ function getInitialConversationId(): number | null {
 }
 
 export default function App() {
+  const { notify, confirmAction, feedback } = useActionFeedback(true);
+  const [deletingConversation, setDeletingConversation] = useState(false);
   const [authorized, setAuthorized] = useState(() => !!getToken());
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
@@ -180,7 +183,7 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || paletteOpen) return;
+      if (e.defaultPrevented || paletteOpen || document.querySelector("dialog[open]")) return;
       // Ignore if user is typing in an input
       const target = e.target as HTMLElement;
       if (
@@ -595,6 +598,7 @@ export default function App() {
   };
 
   const clearAllFilters = () => {
+    if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
     setSearchQuery("");
     setSourceFilter("all");
     setSelectedTag(null);
@@ -649,10 +653,10 @@ export default function App() {
         await loadConversation(selectedConversation.id);
       }
       
-      alert(`Successfully tagged ${result.tagged_count} conversations!`);
+      notify(`Tagged ${result.tagged_count} conversations.`);
     } catch (error) {
       console.error("Failed to auto-tag conversations:", error);
-      alert("Failed to auto-tag conversations. Please try again.");
+      notify("Failed to auto-tag conversations. Please try again.", "error", autoTagAllConversations);
     } finally {
       setAutoTagging(false);
     }
@@ -675,8 +679,10 @@ export default function App() {
       
       // Refresh the conversation list
       refreshConversationList(currentPage);
+      notify("Tag removed from conversation.");
     } catch (error) {
       console.error("Failed to remove tag:", error);
+      notify("Failed to remove tag. Please try again.", "error", () => removeTagFromConversation(conversationId, tagId));
     }
   };
 
@@ -697,7 +703,7 @@ export default function App() {
       return true;
     } catch (error) {
       console.error("Failed to create project:", error);
-      alert(error instanceof Error ? error.message : 'Failed to create project');
+      notify(error instanceof Error ? error.message : 'Failed to create project. Please try again.', 'error');
       return false;
     }
   };
@@ -722,10 +728,11 @@ export default function App() {
       // Refresh the conversation list and projects
       await loadProjects();
       refreshConversationList(currentPage);
+      notify(projectId === null ? "Conversation moved to Uncategorized." : "Conversation moved to the selected project.");
       setShowMoveToProjectModal(false);
     } catch (error) {
       console.error("Failed to move conversation:", error);
-      alert('Failed to move conversation to project');
+      throw new Error('Failed to move conversation to project. Please try again.');
     }
   };
 
@@ -808,23 +815,23 @@ export default function App() {
   };
 
   const handleDeleteConversation = async () => {
-    if (!selectedConversation || !confirm('Delete this conversation?')) return;
-
+    if (!selectedConversation || deletingConversation) return;
+    const conversation = selectedConversation;
+    if (!await confirmAction(`Delete "${conversation.title || "Untitled conversation"}" and all its messages? This cannot be undone.`, "Delete conversation", "Delete conversation")) return;
+    const requestId = detailRequestId.current;
+    setDeletingConversation(true);
     try {
-      const response = await apiFetch(`${API_URL}/conversations/${selectedConversation.id}`, {
-        method: 'DELETE'
-      });
-      if (!response.ok) {
-        alert('Failed to delete conversation. Please try again.');
-        return;
-      }
-      clearConversation();
+      const response = await apiFetch(`${API_URL}/conversations/${conversation.id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete conversation. Please try again.');
+      if (requestId === detailRequestId.current) clearConversation();
       const nextPage = conversations.length <= 1 && currentPage > 1 ? currentPage - 1 : currentPage;
       refreshConversationList(nextPage);
       setShowMenu(false);
+      notify(`Deleted "${conversation.title || "Untitled conversation"}".`);
     } catch (error) {
-      console.error('Failed to delete:', error);
-      alert('Failed to delete conversation. Please try again.');
+      notify(error instanceof Error ? error.message : 'Failed to delete conversation. Please try again.', "error", handleDeleteConversation);
+    } finally {
+      setDeletingConversation(false);
     }
   };
 
@@ -841,6 +848,7 @@ export default function App() {
         const errorData = await response.json().catch(() => null);
         throw new Error(apiErrorMessage(errorData, 'Failed to add tag'));
       }
+      notify(`Tag "${trimmed}" added to conversation.`);
       setNewTagName("");
       setShowAddTag(false);
       await loadTags();
@@ -848,7 +856,7 @@ export default function App() {
       refreshConversationList(currentPage);
     } catch (error) {
       console.error("Failed to add tag:", error);
-      alert(error instanceof Error ? error.message : "Failed to add tag");
+      notify(error instanceof Error ? error.message : "Failed to add tag. Please try again.", "error", () => addTagToConversation(conversationId, trimmed));
     }
   };
 
@@ -1053,7 +1061,7 @@ export default function App() {
 
     const exportWindow = window.open("", "_blank");
     if (!exportWindow) {
-      alert("Unable to open the export window. Please allow popups and try again.");
+      notify("Unable to open the export window. Allow popups, then try again.", "error", handleExportPdf);
       return;
     }
 
@@ -1153,12 +1161,12 @@ export default function App() {
             </div>
           ) : selectedConversation ? (
             <LazyFeature label="conversation reader" reader>
-<ConversationReader
-              conversationId={selectedConversation.id}
-              source={selectedConversation.source}
-              messages={selectedConversation.messages}
-              highlightQuery={highlightQuery}
-            />
+              <ConversationReader
+                conversationId={selectedConversation.id}
+                source={selectedConversation.source}
+                messages={selectedConversation.messages}
+                highlightQuery={highlightQuery}
+              />
             </LazyFeature>
           ) : (
             <div className="welcome-state">
@@ -1172,6 +1180,7 @@ export default function App() {
 
   return (
     <div className={`app-container${fullWidthConvo && selectedConversationId !== null ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
+      {feedback}
       <div className="theme-transition-wash" key={theme} aria-hidden="true" />
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}>
@@ -1805,7 +1814,7 @@ export default function App() {
                 <div className="header-buttons">
                   <button
                     className="icon-btn icon-btn-danger"
-                    onClick={handleDeleteConversation}
+                    onClick={handleDeleteConversation} disabled={deletingConversation}
                     title="Delete conversation"
                   >
                     <Trash2 size={20} />
@@ -1826,7 +1835,7 @@ export default function App() {
                       <Settings size={16} />
                       Move to project
                     </button>
-                    <button className="menu-item" onClick={handleDeleteConversation}>
+                    <button className="menu-item" onClick={handleDeleteConversation} disabled={deletingConversation}>
                       <Trash2 size={16} />
                       Delete conversation
                     </button>
@@ -1900,9 +1909,10 @@ export default function App() {
                       {tag.name}
                       <button
                         className="tag-remove"
-                        onClick={(e) => {
+                        aria-label={`Remove tag ${tag.name}`}
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(`Remove tag "${tag.name}" from this conversation?`)) {
+                          if (await confirmAction(`Remove tag "${tag.name}" from this conversation?`, "Remove tag", "Remove tag")) {
                             removeTagFromConversation(selectedConversation.id, tag.id);
                           }
                         }}
@@ -2259,12 +2269,12 @@ export default function App() {
             </div>
           ) : (
             <LazyFeature label="conversation reader" reader>
-<ConversationReader
-              conversationId={selectedConversation.id}
-              source={selectedConversation.source}
-              messages={selectedConversation.messages}
-              highlightQuery={highlightQuery}
-            />
+              <ConversationReader
+                conversationId={selectedConversation.id}
+                source={selectedConversation.source}
+                messages={selectedConversation.messages}
+                highlightQuery={highlightQuery}
+              />
             </LazyFeature>
           )}
         </div>
@@ -2273,83 +2283,83 @@ export default function App() {
       {/* Import Modal */}
       {showImportModal && (
         <LazyFeature label="Import Conversations" onClose={() => setShowImportModal(false)}>
-<ImportModal
-          onClose={() => setShowImportModal(false)}
-          onSuccess={() => {
-            loadTags();
-            loadProjects();
-            refreshConversationList(1);
-          }}
-        />
+          <ImportModal
+            onClose={() => setShowImportModal(false)}
+            onSuccess={() => {
+              loadTags();
+              loadProjects();
+              refreshConversationList(1);
+            }}
+          />
         </LazyFeature>
       )}
 
       {/* Settings Modal */}
       {showSettingsModal && (
         <LazyFeature label="Import & Export Settings" onClose={() => setShowSettingsModal(false)}>
-<SettingsModal
-          onClose={() => setShowSettingsModal(false)}
-          onConversationsChanged={() => {
-            clearConversation();
-            loadTags();
-            loadProjects();
-            refreshConversationList(1);
-          }}
-        />
+          <SettingsModal
+            onClose={() => setShowSettingsModal(false)}
+            onConversationsChanged={() => {
+              clearConversation();
+              loadTags();
+              loadProjects();
+              refreshConversationList(1);
+            }}
+          />
         </LazyFeature>
       )}
 
       {showDuplicatesModal && (
         <LazyFeature label="Duplicate Management" onClose={() => setShowDuplicatesModal(false)}>
-<DuplicatesModal
-          onClose={() => setShowDuplicatesModal(false)}
-          onSuccess={() => refreshConversationList()}
-        />
+          <DuplicatesModal
+            onClose={() => setShowDuplicatesModal(false)}
+            onSuccess={() => refreshConversationList()}
+          />
         </LazyFeature>
       )}
 
       {showTagModal && (
         <LazyFeature label="Manage Tags" onClose={() => setShowTagModal(false)}>
-<TagManagerModal
-          tags={allTags}
-          onClose={() => setShowTagModal(false)}
-          onTagsUpdated={() => {
-            loadTags();
-            refreshConversationList(currentPage);
-            if (selectedConversation) loadConversation(selectedConversation.id);
-          }}
-        />
+          <TagManagerModal
+            tags={allTags}
+            onClose={() => setShowTagModal(false)}
+            onTagsUpdated={() => {
+              loadTags();
+              refreshConversationList(currentPage);
+              if (selectedConversation) loadConversation(selectedConversation.id);
+            }}
+          />
         </LazyFeature>
       )}
 
       {showProjectModal && (
         <LazyFeature label="Manage Projects" onClose={() => setShowProjectModal(false)}>
-<ProjectManagerModal
-          projects={allProjects}
-          onClose={() => setShowProjectModal(false)}
-          onProjectsUpdated={() => {
-            loadProjects();
-            refreshConversationList(currentPage);
-            if (selectedConversation) loadConversation(selectedConversation.id);
-          }}
-        />
+          <ProjectManagerModal
+            projects={allProjects}
+            onClose={() => setShowProjectModal(false)}
+            onProjectsUpdated={() => {
+              loadProjects();
+              refreshConversationList(currentPage);
+              if (selectedConversation) loadConversation(selectedConversation.id);
+            }}
+          />
         </LazyFeature>
       )}
 
       {showMoveToProjectModal && selectedConversation && (
         <LazyFeature label="Move to Project" onClose={() => setShowMoveToProjectModal(false)}>
-<MoveToProjectModal
-          conversation={selectedConversation}
-          projects={allProjects}
-          onClose={() => setShowMoveToProjectModal(false)}
-          onMove={moveConversationToProject}
-        />
+          <MoveToProjectModal
+            conversation={selectedConversation}
+            projects={allProjects}
+            onClose={() => setShowMoveToProjectModal(false)}
+            onMove={moveConversationToProject}
+          />
         </LazyFeature>
       )}
 
       {showShortcutsModal && (
         <LazyFeature label="Keyboard Shortcuts" onClose={() => setShowShortcutsModal(false)}>
-<KeyboardShortcutsModal onClose={() => setShowShortcutsModal(false)} />
+          <KeyboardShortcutsModal onClose={() => setShowShortcutsModal(false)} />
         </LazyFeature>
       )}
 

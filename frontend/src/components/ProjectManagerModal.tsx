@@ -1,3 +1,4 @@
+import useActionFeedback from "./useActionFeedback";
 import React, { useState } from "react";
 import ModalShell from "./ModalShell";
 import { API_URL, apiFetch, apiErrorMessage } from "../api";
@@ -12,6 +13,7 @@ export default function ProjectManagerModal({
   onClose: () => void;
   onProjectsUpdated: () => void;
 }) {
+  const { notify, confirmAction, feedback } = useActionFeedback();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#8B5CF6");
@@ -67,7 +69,7 @@ export default function ProjectManagerModal({
 
   const handleDelete = async (project: ProjectType) => {
     const message = `Delete project "${project.name}"? Conversations will become uncategorized.`;
-    if (!confirm(message)) return;
+    if (!await confirmAction(message, "Delete project")) return;
 
     setSaving(true);
     setStatus(null);
@@ -91,6 +93,7 @@ export default function ProjectManagerModal({
 
   return (
     <ModalShell title="Manage Projects" onClose={onClose} className="tag-manager-modal" bodyClassName="tag-manager-content">
+      {feedback}
       <form onSubmit={handleSubmit} className="tag-form">
         <h3>Create New Project</h3>
         <div className="form-group">
@@ -136,8 +139,8 @@ export default function ProjectManagerModal({
             {saving ? "Creating..." : "Create Project"}
           </button>
         </div>
-        {status && <div className="status-success">{status}</div>}
-        {error && <div className="status-error">{error}</div>}
+        {status && <div className="status-success" role="status">{status}</div>}
+        {error && <div className="status-error" role="alert">{error}</div>}
       </form>
 
       <div className="tag-list">

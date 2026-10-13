@@ -1,9 +1,11 @@
+import useActionFeedback from "./useActionFeedback";
 import { useState, useEffect } from "react";
 import ModalShell from "./ModalShell";
 import { API_URL, apiFetch } from "../api";
 import type { DuplicateGroup, DuplicatesData } from "../types";
 
 export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { notify, confirmAction, feedback } = useActionFeedback();
   const [duplicates, setDuplicates] = useState<DuplicatesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,21 +120,23 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
   };
 
   const handleBulkDelete = async () => {
+    if (deleting) return;
     if (selectedForDeletion.size === 0) {
-      alert("Please select conversations to delete");
+      notify("Select the conversations to delete, then try again.", "error");
       return;
     }
 
     const message = `Delete ${selectedForDeletion.size} conversation(s)? This cannot be undone.`;
-    if (!confirm(message)) return;
+    if (!await confirmAction(message, "Delete selected conversations")) return;
 
+    const deletionIds = new Set(selectedForDeletion);
     setDeleting(true);
     try {
       const response = await apiFetch(`${API_URL}/conversations/bulk`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversation_ids: Array.from(selectedForDeletion)
+          conversation_ids: Array.from(deletionIds)
         })
       });
 
@@ -141,7 +145,7 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
       }
 
       const result = await response.json();
-      alert(`Successfully deleted ${result.deleted_count} conversation(s)`);
+      notify(`Deleted ${result.deleted_count} conversation(s).`);
 
       // Update local state instead of re-querying
       setDuplicates(prev => {
@@ -149,10 +153,10 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
         const updatedGroups = prev.groups
           .map(group => ({
             ...group,
-            conversations: group.conversations.filter(c => !selectedForDeletion.has(c.id)),
-            count: group.conversations.filter(c => !selectedForDeletion.has(c.id)).length,
+            conversations: group.conversations.filter(c => !deletionIds.has(c.id)),
+            count: group.conversations.filter(c => !deletionIds.has(c.id)).length,
             total_messages: group.conversations
-              .filter(c => !selectedForDeletion.has(c.id))
+              .filter(c => !deletionIds.has(c.id))
               .reduce((sum, c) => sum + c.message_count, 0),
           }))
           .filter(group => group.conversations.length > 1);
@@ -163,11 +167,11 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
           total_duplicates: updatedGroups.reduce((sum, g) => sum + g.count, 0),
         };
       });
-      setSelectedForDeletion(new Set());
+      setSelectedForDeletion(prev => new Set([...prev].filter(id => !deletionIds.has(id))));
       onSuccess();
     } catch (error) {
       console.error("Delete failed:", error);
-      alert("Failed to delete conversations");
+      notify("Failed to delete conversations. Your selection is retained; try again.", "error", handleBulkDelete);
     } finally {
       setDeleting(false);
     }
@@ -191,6 +195,7 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
         </>
       }
     >
+      {feedback}
       <div className="strategy-selector">
         <label>Detection Method:</label>
         <select value={strategy} onChange={(e) => setStrategy(e.target.value as typeof strategy)}>

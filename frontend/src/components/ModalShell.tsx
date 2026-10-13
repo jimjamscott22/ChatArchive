@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useRef } from "react";
+import { ReactNode, RefObject, useEffect, useId, useRef } from "react";
 
 type ModalShellProps = {
   title: string;
@@ -8,6 +8,7 @@ type ModalShellProps = {
   bodyClassName?: string;
   actions?: ReactNode;
   headerActions?: ReactNode;
+  initialFocusRef?: RefObject<HTMLElement>;
 };
 
 export default function ModalShell({
@@ -18,6 +19,7 @@ export default function ModalShell({
   bodyClassName = "",
   actions,
   headerActions,
+  initialFocusRef,
 }: ModalShellProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -26,6 +28,7 @@ export default function ModalShell({
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) {
       dialog.showModal();
+      initialFocusRef?.current?.focus();
     }
     
     // Cleanup if component unmounts unexpectedly
@@ -34,7 +37,7 @@ export default function ModalShell({
         dialog.close();
       }
     };
-  }, []);
+  }, [initialFocusRef]);
 
   const handleClose = () => {
     dialogRef.current?.close();
@@ -42,6 +45,8 @@ export default function ModalShell({
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
+    // Nested confirmations own their clicks; don't dismiss their parent dialog.
+    e.stopPropagation();
     const dialog = dialogRef.current;
     if (!dialog) return;
     const rect = dialog.getBoundingClientRect();
@@ -64,6 +69,7 @@ export default function ModalShell({
       onCancel={(e) => {
         // Handle native Escape key
         e.preventDefault();
+        e.stopPropagation();
         handleClose();
       }}
       onClick={handleBackdropClick}

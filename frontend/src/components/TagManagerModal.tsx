@@ -1,3 +1,4 @@
+import useActionFeedback from "./useActionFeedback";
 import React, { useState } from "react";
 import { Tag } from "lucide-react";
 import ModalShell from "./ModalShell";
@@ -13,6 +14,7 @@ export default function TagManagerModal({
   onClose: () => void;
   onTagsUpdated: () => void;
 }) {
+  const { notify, confirmAction, feedback } = useActionFeedback();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#3B82F6");
@@ -82,7 +84,7 @@ export default function TagManagerModal({
 
   const handleDelete = async (tag: TagType) => {
     const message = `Delete tag "${tag.name}"? This will remove it from all conversations.`;
-    if (!confirm(message)) return;
+    if (!await confirmAction(message, "Delete tag")) return;
 
     setSaving(true);
     setStatus(null);
@@ -109,6 +111,7 @@ export default function TagManagerModal({
 
   return (
     <ModalShell title="Manage Tags" onClose={onClose} className="tag-manager-modal" bodyClassName="tag-manager-content">
+      {feedback}
       <form className="tag-form" onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Tag name</label>
@@ -154,8 +157,8 @@ export default function TagManagerModal({
           </button>
         </div>
 
-        {status && <div className="status-success">{status}</div>}
-        {error && <div className="status-error">{error}</div>}
+        {status && <div className="status-success" role="status">{status}</div>}
+        {error && <div className="status-error" role="alert">{error}</div>}
       </form>
 
       <div className="tag-list">
@@ -182,7 +185,7 @@ export default function TagManagerModal({
                   <button type="button" onClick={() => handleEdit(tag)}>
                     Edit
                   </button>
-                  <button type="button" className="danger" onClick={() => handleDelete(tag)}>
+                  <button type="button" className="danger" onClick={() => handleDelete(tag)} disabled={saving}>
                     Delete
                   </button>
                 </div>

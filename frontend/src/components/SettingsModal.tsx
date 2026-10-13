@@ -1,3 +1,4 @@
+import useActionFeedback from "./useActionFeedback";
 import { useState, useEffect } from "react";
 import { Trash2, Settings } from "lucide-react";
 import ModalShell from "./ModalShell";
@@ -11,10 +12,12 @@ export default function SettingsModal({
   onClose: () => void;
   onConversationsChanged?: () => void;
 }) {
+  const { notify, confirmAction, feedback } = useActionFeedback();
   const [activeTab, setActiveTab] = useState<'import' | 'history'>('import');
   const [settings, setSettings] = useState<ImportSettings | null>(null);
   const [history, setHistory] = useState<ImportHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingImport, setDeletingImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -85,8 +88,11 @@ export default function SettingsModal({
   };
 
   const handleDeleteImport = async (historyId: number) => {
-    const message = "Delete this import and all its conversations? This cannot be undone.";
-    if (!confirm(message)) return;
+    if (deletingImport) return;
+    const filename = history.find(item => item.id === historyId)?.filename || "this import";
+    const message = `Delete "${filename}" and all its conversations? This cannot be undone.`;
+    if (!await confirmAction(message, "Delete import")) return;
+    setDeletingImport(true);
     
     try {
       const response = await apiFetch(`${API_URL}/import/history/${historyId}?delete_conversations=true`, {
@@ -98,13 +104,15 @@ export default function SettingsModal({
       }
       
       const result = await response.json();
-      alert(`Deleted import and ${result.deleted_conversations} conversation(s)`);
+      notify(`Deleted import and ${result.deleted_conversations} conversation(s).`);
       
       await loadHistory();
       onConversationsChanged?.();
     } catch (error) {
       console.error("Failed to delete import:", error);
-      alert("Failed to delete import");
+      notify("Failed to delete import. Please try again.", "error", () => handleDeleteImport(historyId));
+    } finally {
+      setDeletingImport(false);
     }
   };
 
@@ -141,6 +149,7 @@ export default function SettingsModal({
 
   return (
     <ModalShell title="Import & Export Settings" onClose={onClose} className="settings-modal">
+      {feedback}
       <div className="settings-tabs" role="tablist" aria-label="Settings sections">
         <button 
           className={activeTab === 'import' ? 'active' : ''} 
@@ -271,7 +280,7 @@ export default function SettingsModal({
                         <td>
                           <button
                             className="icon-btn delete-import-btn"
-                            onClick={() => handleDeleteImport(item.id)}
+                            onClick={() => handleDeleteImport(item.id)} disabled={deletingImport}
                             title="Delete this import and its conversations"
                           >
                             <Trash2 size={16} />

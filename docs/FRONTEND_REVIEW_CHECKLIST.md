@@ -1,8 +1,8 @@
 # Frontend review checklist and initial plan
 
 Recorded on 2026-10-09 from the supplied React Best Practices review.
-Findings 1–3 are complete; findings 4–6 remain open. Check off a finding only
-after its behavior and acceptance checks have been verified.
+All six findings are complete. Implementation and verification evidence is
+recorded below; browser checks used mocked API responses.
 
 The review identified opportunities for more reliable conversation switching,
 smoother long-thread reading, and better keyboard behavior while preserving
@@ -58,7 +58,7 @@ tests and a production build; it did not include a visual browser audit.
   Skill rule: `bundle-conditional`.
   Evidence: [eager imports](../frontend/src/App.tsx#L1).
 
-- [ ] **6. Medium priority — Replace disruptive browser alerts with contextual feedback.**
+- [x] **6. Medium priority — Replace disruptive browser alerts with contextual feedback.**
   Tagging, moving, deleting, and other actions use native `alert()` or
   `confirm()` dialogs, interrupting work with limited context or recovery.
   Use non-blocking success messages, inline actionable errors, and the existing
@@ -120,7 +120,7 @@ For each implementation step, run `npm test` and `npm run build` from
 `frontend/`, perform the relevant browser checks, and record results before
 checking off the corresponding finding. Inspect desktop/mobile rendering and
 theme switching after shared reader changes. Keep each step in a focused
-commit. Findings 4–6 remain queued for later work.
+commit. The subsequent findings 4–6 work is recorded below.
 
 ## Implementation verification — 2026-10-12
 
@@ -155,7 +155,7 @@ outside dismissal. Shortcut help now describes the list-only arrow scope.
 - No live database/provider verification or full contrast audit across all 11
   themes was performed. Backend code and API contracts were unchanged.
 
-Findings 4–6 remain queued. The first pass did not include performance changes;
+Findings 4–6 were queued at this checkpoint. The first pass did not include performance changes;
 reader profiling and optimization are recorded below.
 
 ## Shared reader verification — 2026-10-12 (finding 2)
@@ -227,7 +227,7 @@ Implement each item in this session and verify it before its local commit.
 - [x] **5:** Extract tool components and their types from `App.tsx`; lazy-load
   each tool and both reader paths with scoped loading and failure boundaries.
   Verify tests/build, entry size, chunk requests, and cold first-open behavior.
-- [ ] **6:** Use shared app feedback and `ModalShell` confirmations for native
+- [x] **6:** Use shared app feedback and `ModalShell` confirmations for native
   alerts/confirms. Keep failed forms open, provide actionable errors, and test
   cancel/confirm, failed actions, success feedback, and browser focus behavior.
 
@@ -274,3 +274,48 @@ reload recovery, and tool dismissal after a chunk fails.
   guarantees. Full-thread parsing remains unchanged.
 - Browser plugin unavailable; bundled Playwright used. No live backend/provider
   checks. All feature modules remain authenticated through `apiFetch()`.
+
+
+## Contextual feedback verification — 2026-10-13 (finding 6)
+
+`frontend/src/components/useActionFeedback.tsx` now supplies dismissible live
+success messages, persistent actionable errors, and native `ModalShell`
+confirmations. No production frontend `alert()` or `confirm()` calls remain.
+Conversation, tag, project, import, and bulk deletion confirmations describe the
+affected data. Import deletion names its file; bulk deletion retains its selection
+on failure and uses a snapshot of the confirmed IDs. Failed forms retain their
+inputs, and failed project moves remain open instead of closing as if successful.
+
+The shared dialog shell explicitly focuses Cancel after opening a confirmation.
+Escape/backdrop cancellation and focus return use the native dialog lifecycle.
+Nested cancellation/click events stop at the top dialog; global shortcuts defer
+to open dialogs. Repeated confirmation triggers cannot replace a pending decision,
+unmount resolves it as cancelled, and destructive requests disable repeat actions.
+Small adjacent correction: clearing filters cancels the pending search debounce.
+
+- `cd frontend && npm test`: **46 tests passed in five files**. This pass added
+  ten cases across app and tool feedback, covering cancellation, failed actions,
+  recovery, retained move/duplicate selections, confirmed bulk IDs, status and
+  dismissal, nested cancellation, pending-decision cleanup, and debounce clearing.
+  Intentional negative tests log their mocked errors, including rejected chunks.
+- `cd frontend && npm run build`: **passed** TypeScript and Vite compilation.
+  Final entry JS **205.71 kB / 64.62 kB gzip**; reader **303.33 kB / 92.79 kB gzip**.
+  No bundle-size warning. Entry JS is about **62% smaller** than the pre-split
+  538.02 kB build. Code splitting defers downloads rather than removing them.
+- Production Playwright/Chromium (1440 × 1000 and 390 × 844), mocked APIs:
+  verified auto-tag failure/retry/success/dismissal; failed moves preserve the
+  selected project; nested confirmations focus Cancel, Escape retains the parent
+  and restores the trigger; tag removal; conversation deletion failure, retry
+  cancellation, and success; mobile confirmation and notification layout.
+  Screenshots were captured outside the repository and visually inspected.
+  No native browser dialogs, uncaught app errors, blank screen, or framework
+  overlay. Five console entries were expected from intentional HTTP 500 failures.
+- Shared-reader browser regression: both viewing modes, message order, Markdown,
+  syntax/prose highlights, resources, and all 11 themes passed without unexpected
+  console errors. Browser plugin unavailable; bundled Playwright used.
+- Backend code/API contracts were unchanged. No live Supabase/provider check,
+  Windows executable/native integration, full contrast audit, or browser matrix
+  was run. First-open timing remains the local synthetic measurement above.
+
+The initial and remaining implementation plans are complete. Findings 1–6 are
+implemented and verified within the local and mocked-browser evidence above.
