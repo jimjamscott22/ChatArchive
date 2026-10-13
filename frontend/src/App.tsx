@@ -172,6 +172,7 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasListResponse, setHasListResponse] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [listTotal, setListTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -434,6 +435,7 @@ export default function App() {
     }
     setListError(null);
     setConversations(items);
+    setHasListResponse(true);
     setCurrentPage(data.page ?? page);
     setTotalPages(pages);
     setListTotal(typeof data.total === "number" ? data.total : items.length);
@@ -609,6 +611,10 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
 
   const handleSearch = (query: string) => {
+    // Invalidate immediately, including the debounce window.
+    listRequestId.current += 1;
+    setLoading(true);
+    setListError(null);
     setSearchQuery(query);
     setCurrentPage(1);
     if (searchDebounceRef.current) {
@@ -1599,7 +1605,16 @@ export default function App() {
             </div>
           )}
 
-          <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar"
+          {hasListResponse && (loading || isSearching) && (
+            <p className="list-update-status" role="status">Updating results…</p>
+          )}
+          {hasListResponse && listError && (
+            <div className="list-update-error" role="alert">
+              <p>{listError} Previous results are still shown.</p>
+              <button onClick={() => refreshConversationList(currentPage)}>Try again</button>
+            </div>
+          )}
+          <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar" aria-busy={loading || isSearching}
             onKeyDown={(e) => {
               const target = e.target;
               if (!(target instanceof HTMLElement) || !target.matches('.conversation-card')) return;
@@ -1611,7 +1626,7 @@ export default function App() {
               cards[next]?.focus();
               if (conversations[next]) loadConversation(conversations[next].id);
             }}>
-            {loading || isSearching ? (
+            {(loading || isSearching) && !hasListResponse ? (
               <div className="skeleton-container">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="skeleton-card">
@@ -1626,7 +1641,7 @@ export default function App() {
                   </div>
                 ))}
               </div>
-            ) : listError ? (
+            ) : listError && !hasListResponse ? (
               <div className="empty-state">
                 <div className="empty-icon">⚠️</div>
                 <h3>Couldn't load conversations</h3>
@@ -1829,7 +1844,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className="main-content" aria-busy={!selectedConversationId && !analyticsView && (loading || isSearching)}>
         <header className="main-header">
           <div className="main-header-top">
             <div className="main-header-leading">
@@ -2106,7 +2121,7 @@ export default function App() {
                 </div>
               </section>
 
-              {loading || isSearching ? (
+              {(loading || isSearching) && !hasListResponse ? (
                 <div className="skeleton-container center-skeleton">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="skeleton-card">

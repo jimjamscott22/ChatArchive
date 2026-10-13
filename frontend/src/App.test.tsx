@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 type FetchMockOptions = {
+  search?: (query: string) => Promise<Response>;
+  list?: () => Promise<Response>;
   duplicatesError?: boolean;
   detail?: (id: number) => Promise<Response>;
   twoConversations?: boolean;
@@ -103,6 +105,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
     }
 
     if (url.includes("/conversations/search")) {
+      if (options.search) return options.search(new URL(url).searchParams.get("q") || "");
       return jsonResponse({
         items: options.twoConversations ? [baseConversation, { ...baseConversation, id: 2, title: "Second thread" }] : [baseConversation],
         total: 1,
@@ -113,6 +116,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
     }
 
     if (url.includes("/conversations?")) {
+      if (options.list) return options.list();
       return jsonResponse({
         items: options.twoConversations ? [baseConversation, { ...baseConversation, id: 2, title: "Second thread" }] : [baseConversation],
         total: 1,
@@ -198,6 +202,62 @@ describe("App UI improvements", () => {
     vi.stubGlobal("alert", vi.fn());
     vi.stubGlobal("confirm", vi.fn(() => true));
     vi.stubGlobal("open", vi.fn());
+  });
+
+  it.each(["success", "empty", "failure"])("retains mounted rows during a search refresh ending in %s", async (outcome) => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>(resolve => { finish = resolve; });
+    installFetchMock({ search: () => pending });
+    render(<App />);
+    const row = await screen.findByRole("button", { name: "Refactor search filters" });
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "new" } });
+    await screen.findByText("Updating results…");
+    const list = screen.getByLabelText("Conversation list in sidebar");
+    expect(list).toHaveAttribute("aria-busy", "true");
+    expect(row.isConnected).toBe(true);
+    expect(document.querySelector(".skeleton-container")).toBeNull();
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=new"), expect.anything()));
+    await act(async () => finish(outcome === "failure"
+      ? jsonResponse({}, { ok: false, status: 500 })
+      : jsonResponse({ items: outcome === "empty" ? [] : [{ ...baseConversation, title: "New result" }], total: 1, pages: 1 })));
+    expect(list).toHaveAttribute("aria-busy", "false");
+    if (outcome === "failure") {
+      expect(row.isConnected).toBe(true);
+      expect(screen.getByRole("alert")).toHaveTextContent("Previous results are still shown");
+      expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+    } else {
+      expect(screen.queryByText("Updating results…")).not.toBeInTheDocument();
+      if (outcome === "success") await screen.findByRole("button", { name: "New result" });
+      else expect(screen.queryByRole("button", { name: "Refactor search filters" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("ignores search responses during the next query's debounce window", async () => {
+    let finish!: (response: Response) => void;
+    installFetchMock({ search: query => query === "old"
+      ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve(jsonResponse({ items: [{ ...baseConversation, title: "Latest result" }], pages: 1, total: 1 })) });
+    render(<App />);
+    await screen.findByRole("button", { name: "Refactor search filters" });
+    const input = screen.getByLabelText(/search conversations/i);
+    fireEvent.change(input, { target: { value: "old" } });
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.change(input, { target: { value: "latest" } });
+    await act(async () => finish(jsonResponse({ items: [{ ...baseConversation, title: "Stale result" }], pages: 1 })));
+    expect(screen.queryByRole("button", { name: "Stale result" })).not.toBeInTheDocument();
+    await screen.findByRole("button", { name: "Latest result" });
+  });
+
+  it("uses skeletons only before the first successful list response", async () => {
+    let finish!: (response: Response) => void;
+    installFetchMock({ list: () => new Promise(resolve => { finish = resolve; }) });
+    render(<App />);
+    expect(document.querySelector(".skeleton-container")).not.toBeNull();
+    expect(screen.queryByText("Updating results…")).not.toBeInTheDocument();
+    await act(async () => finish(jsonResponse({ items: [], pages: 0, total: 0 })));
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "query" } });
+    expect(document.querySelector(".skeleton-container")).toBeNull();
+    expect(screen.getByText("Updating results…")).toBeVisible();
   });
 
   it.each(["success", "failure"])("ignores a stale detail %s after switching threads", async (outcome) => {

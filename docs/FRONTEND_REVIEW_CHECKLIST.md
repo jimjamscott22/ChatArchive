@@ -41,7 +41,7 @@ tests and a production build; it did not include a visual browser audit.
   Evidence: [global shortcuts](../frontend/src/App.tsx#L281),
   [theme picker](../frontend/src/App.tsx#L2586).
 
-- [ ] **4. Medium priority — Keep search results visible while refreshing.**
+- [x] **4. Medium priority — Keep search results visible while refreshing.**
   Every search request replaces the list with skeletons, removing context and
   unmounting rows while users refine a query. Reserve skeletons for initial
   loading; retain previous results during refresh with an “Updating results…”
@@ -213,4 +213,36 @@ thread and production first-open latency was not benchmarked.
   The Browser skill/plugin was unavailable, so bundled Playwright was used.
 - No live database/provider check or full theme-contrast audit was performed.
 
-The initial three-step plan is complete. Findings 4–6 remain queued.
+The initial three-step plan is complete.
+
+## Remaining implementation plan — findings 4–6
+
+Preserve the existing styles, authenticated API calls, and native dialog shell.
+Implement each item in this session and verify it before its local commit.
+
+- [x] **4:** Track the first successful list response in `App.tsx`. Keep rows
+  mounted during subsequent requests, expose busy/status and recoverable errors,
+  and invalidate old requests when a new query is entered. Test deferred and
+  out-of-order responses, empty results, initial loading, and refresh failures.
+- [ ] **5:** Extract tool components and their types from `App.tsx`; lazy-load
+  each tool and both reader paths with scoped loading and failure boundaries.
+  Verify tests/build, entry size, chunk requests, and cold first-open behavior.
+- [ ] **6:** Use shared app feedback and `ModalShell` confirmations for native
+  alerts/confirms. Keep failed forms open, provide actionable errors, and test
+  cancel/confirm, failed actions, success feedback, and browser focus behavior.
+
+
+## Refresh verification — 2026-10-12 (finding 4)
+
+The first successful response (including an empty list) ends initial loading.
+Later searches, filters, and page refreshes retain existing rows and overview
+content, expose `aria-busy` and “Updating results…”, and retain results on failure
+with an inline error and Try again. Query input invalidates pending requests
+immediately, including during debounce.
+
+- Frontend tests: **34 passed**; five new cases cover refresh success, empty
+  response, failure, stale completion during debounce, and initial loading.
+- TypeScript/Vite build: **passed**, entry **538.02 kB / 163.82 kB gzip**.
+- Playwright/Chromium with mocked API: retained rows/busy/status/no skeletons,
+  empty completion, desktop/mobile captures, and no uncaught application errors.
+  Browser plugin unavailable; bundled Playwright used. No live backend check.

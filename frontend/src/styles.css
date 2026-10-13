@@ -5404,3 +5404,20 @@ button.danger:disabled {
 .auth-gate-card .error-item {
   margin: 12px 0 0;
 }
+/* List refresh feedback stays outside the busy region for announcements. */
+.list-update-status, .list-update-error {
+  margin: 8px 12px;
+  padding: 10px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--surface-panel);
+  font-size: 0.85rem;
+}
+.list-update-error button {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
