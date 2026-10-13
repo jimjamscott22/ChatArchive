@@ -495,7 +495,8 @@ describe("App UI improvements", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: /^settings$/i }));
-    const dialog = await screen.findByRole("dialog", { name: /import & export settings/i });
+    await screen.findByText(/only json imports are supported/i);
+    const dialog = screen.getByRole("dialog", { name: /import & export settings/i });
 
     expect(within(dialog).getByText(/only json imports are supported/i)).toBeInTheDocument();
     expect(within(dialog).queryByRole("option", { name: "CSV" })).not.toBeInTheDocument();
@@ -524,7 +525,8 @@ describe("App UI improvements", () => {
     render(<App />);
 
     fireEvent.click((await screen.findAllByRole("button", { name: /import conversations/i }))[0]);
-    const dialog = await screen.findByRole("dialog", { name: /import conversations/i });
+    await screen.findByLabelText(/select file/i);
+    const dialog = screen.getByRole("dialog", { name: /import conversations/i });
     const fileInput = within(dialog).getByLabelText(/select file/i);
     fireEvent.change(fileInput, {
       target: {

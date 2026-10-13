@@ -48,7 +48,7 @@ tests and a production build; it did not include a visual browser audit.
   status and an accessible busy indication. Preserve stale-response protection.
   Evidence: [list loading UI](../frontend/src/App.tsx#L1730).
 
-- [ ] **5. Medium priority — Reduce the initial JavaScript download.**
+- [x] **5. Medium priority — Reduce the initial JavaScript download.**
   The reviewed production build reported a single **536.32 kB JavaScript
   bundle (162.85 kB gzipped)** and a Vite size warning. Markdown/highlighting
   loads eagerly; settings, duplicate management, and analytics share the
@@ -224,7 +224,7 @@ Implement each item in this session and verify it before its local commit.
   mounted during subsequent requests, expose busy/status and recoverable errors,
   and invalidate old requests when a new query is entered. Test deferred and
   out-of-order responses, empty results, initial loading, and refresh failures.
-- [ ] **5:** Extract tool components and their types from `App.tsx`; lazy-load
+- [x] **5:** Extract tool components and their types from `App.tsx`; lazy-load
   each tool and both reader paths with scoped loading and failure boundaries.
   Verify tests/build, entry size, chunk requests, and cold first-open behavior.
 - [ ] **6:** Use shared app feedback and `ModalShell` confirmations for native
@@ -246,3 +246,31 @@ immediately, including during debounce.
 - Playwright/Chromium with mocked API: retained rows/busy/status/no skeletons,
   empty completion, desktop/mobile captures, and no uncaught application errors.
   Browser plugin unavailable; bundled Playwright used. No live backend check.
+
+
+## Lazy loading verification — 2026-10-13 (finding 5)
+
+The shared reader and eight tool screens/dialogs now have independent dynamic
+imports declared at module scope. API types moved to `frontend/src/types.ts`;
+tool bodies moved unchanged to individual components. Scoped Suspense placeholders
+reserve reader/modal space, and error boundaries offer connection guidance,
+reload recovery, and tool dismissal after a chunk fails.
+
+- Frontend tests: **36 passed**, including delayed and rejected module tests.
+  Form tests now await form content rather than the transient loading dialog.
+- TypeScript/Vite build: **passed**. Entry JS **203.28 kB / 63.90 kB gzip**, down
+  from **538.02 kB / 163.82 kB gzip** (62.2% / 61.0% reduction). Reader chunk
+  **303.33 kB / 92.78 kB gzip**; tool chunks **0.68–6.26 kB**. No size warning.
+- Production Playwright/Chromium with mocked APIs verified that Home requested
+  only the entry JS, a delayed reader download showed its placeholder, and
+  reader/settings/tags/projects/duplicates opened correctly. Desktop/mobile
+  screenshots captured; mobile settings and desktop refresh inspected. No
+  unexpected console/page errors or framework overlay.
+- Five fresh-context production runs with a synthetic 100-message thread (20
+  TypeScript code lines per message), no network/CPU throttling: click to last
+  heading median **321 ms before / 377 ms after**; ranges **312–323 / 370–828 ms**.
+  Splitting adds a cold first-open download/parse step; subsequent opens reuse
+  loaded modules. These local synthetic measurements are not production network
+  guarantees. Full-thread parsing remains unchanged.
+- Browser plugin unavailable; bundled Playwright used. No live backend/provider
+  checks. All feature modules remain authenticated through `apiFetch()`.
