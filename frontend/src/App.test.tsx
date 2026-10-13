@@ -1,10 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
 type FetchMockOptions = {
   duplicatesError?: boolean;
+  detail?: (id: number) => Promise<Response>;
+  twoConversations?: boolean;
 };
 
 const baseConversation = {
@@ -102,7 +104,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
 
     if (url.includes("/conversations/search")) {
       return jsonResponse({
-        items: [baseConversation],
+        items: options.twoConversations ? [baseConversation, { ...baseConversation, id: 2, title: "Second thread" }] : [baseConversation],
         total: 1,
         page: 1,
         page_size: 100,
@@ -112,7 +114,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
 
     if (url.includes("/conversations?")) {
       return jsonResponse({
-        items: [baseConversation],
+        items: options.twoConversations ? [baseConversation, { ...baseConversation, id: 2, title: "Second thread" }] : [baseConversation],
         total: 1,
         page: 1,
         page_size: 100,
@@ -120,7 +122,7 @@ function installFetchMock(options: FetchMockOptions = {}) {
       });
     }
 
-    if (url.includes("/conversations/1/resources")) {
+    if (/\/conversations\/\d+\/resources/.test(url)) {
       return jsonResponse({
         items: [],
         total: 0,
@@ -149,6 +151,9 @@ function installFetchMock(options: FetchMockOptions = {}) {
     if (url.includes("/import/chatgpt")) {
       return jsonResponse([{ ...baseConversation, id: 2 }]);
     }
+
+    const detailId = url.match(/\/conversations\/(\d+)$/);
+    if (detailId && options.detail) return options.detail(Number(detailId[1]));
 
     if (url.includes("/conversations/1")) {
       return jsonResponse({
@@ -193,6 +198,121 @@ describe("App UI improvements", () => {
     vi.stubGlobal("alert", vi.fn());
     vi.stubGlobal("confirm", vi.fn(() => true));
     vi.stubGlobal("open", vi.fn());
+  });
+
+  it.each(["success", "failure"])("ignores a stale detail %s after switching threads", async (outcome) => {
+    let finishFirst!: (response: Response) => void;
+    const first = new Promise<Response>((resolve) => { finishFirst = resolve; });
+    installFetchMock({ twoConversations: true, detail: async (id) => id === 1 ? first : jsonResponse({ ...baseConversation, id: 2, title: "Second thread", messages: [] }) });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Loading conversation");
+    fireEvent.click(screen.getByRole("button", { name: "Second thread" }));
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Second thread" });
+    await act(async () => { finishFirst(outcome === "success" ? jsonResponse({ ...baseConversation, messages: [] }) : jsonResponse({}, { ok: false, status: 404 })); });
+    expect(within(screen.getByRole("main")).getByRole("heading", { name: "Second thread" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Second thread" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows a detail error and retries the selected conversation", async () => {
+    let attempts = 0;
+    installFetchMock({ detail: async () => {
+      if (++attempts === 1) throw new Error("offline");
+      return jsonResponse({ ...baseConversation, messages: [] });
+    } });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load conversation");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    expect(attempts).toBe(2);
+  });
+
+  it("does not reopen a pending conversation after returning home", async () => {
+    let finish!: (response: Response) => void;
+    installFetchMock({ detail: () => new Promise<Response>((resolve) => { finish = resolve; }) });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    fireEvent.click(screen.getByRole("button", { name: /home/i }));
+    await act(async () => { finish(jsonResponse({ ...baseConversation, messages: [] })); });
+    expect(document.querySelector(".conversation-view")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading conversation...")).not.toBeInTheDocument();
+  });
+
+  it.each(["missing", "malformed"])("offers Retry for a %s detail response", async (kind) => {
+    installFetchMock({ detail: async () => kind === "missing"
+      ? jsonResponse({}, { ok: false, status: 404 })
+      : jsonResponse({ ...baseConversation, messages: null }) });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(kind === "missing" ? "Conversation not found" : "Conversation could not be loaded");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(document.querySelector(".conversation-view")).not.toBeInTheDocument();
+  });
+
+  it("allows standalone conversation loading to recover with Retry", async () => {
+    window.history.replaceState({}, "", "?conversation=1");
+    let attempts = 0;
+    installFetchMock({ detail: async () => ++attempts === 1
+      ? jsonResponse({}, { ok: false, status: 500 })
+      : jsonResponse({ ...baseConversation, messages: [] }) });
+    try {
+      render(<App />);
+      await screen.findByRole("alert");
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await screen.findByRole("heading", { name: "Refactor search filters" });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
+  it("scopes conversation arrows to focused list rows", async () => {
+    const fetchMock = installFetchMock({ twoConversations: true, detail: async (id) => jsonResponse({ ...baseConversation, id, title: id === 1 ? baseConversation.title : "Second thread", messages: [] }) });
+    render(<App />);
+    const first = await screen.findByRole("button", { name: "Refactor search filters" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    const second = screen.getByRole("button", { name: "Second thread" });
+    expect(second).toHaveFocus();
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Second thread" });
+    const count = fetchMock.mock.calls.length;
+    fireEvent.keyDown(screen.getByRole("main"), { key: "ArrowUp" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(fetchMock.mock.calls.length).toBe(count);
+    fireEvent.keyDown(second, { key: "ArrowUp" });
+    expect(first).toHaveFocus();
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+  });
+
+  it("focuses and navigates theme options without opening conversations", async () => {
+    const fetchMock = installFetchMock();
+    render(<App />);
+    await screen.findByRole("button", { name: "Refactor search filters" });
+    const trigger = screen.getByRole("button", { name: /choose theme/i });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitemradio", { name: "Light" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(screen.getByRole("menuitemradio", { name: "Forest" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/conversations/1"))).toBe(false);
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Forest" }));
+    expect(trigger).toHaveFocus();
+    expect(localStorage.getItem("chatarchive-theme")).toBe("forest");
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menuitemradio", { name: "Forest" })).toHaveFocus();
+    fireEvent.click(screen.getByTestId("theme-palette-backdrop"));
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("opens the project manager with dialog semantics", async () => {

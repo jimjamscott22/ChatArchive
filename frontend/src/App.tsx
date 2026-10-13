@@ -185,7 +185,10 @@ export default function App() {
   const [listTotal, setListTotal] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [standaloneMode, setStandaloneMode] = useState(() => getInitialConversationId() !== null);
-  const [standaloneError, setStandaloneError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
+  const detailRequestId = useRef(0);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
@@ -199,6 +202,19 @@ export default function App() {
     return 'dark';
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteTriggerRef = useRef<HTMLButtonElement>(null);
+  const paletteMenuRef = useRef<HTMLDivElement>(null);
+
+  const dismissPalette = (restoreFocus = true) => {
+    setPaletteOpen(false);
+    if (restoreFocus) paletteTriggerRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (paletteOpen) {
+      paletteMenuRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    }
+  }, [paletteOpen]);
   const [showMenu, setShowMenu] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -219,7 +235,6 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   const resizingRef = useRef(false);
   const [sourceFilter, setSourceFilter] = useState<string>('all');
-  const [selectedConversationIndex, setSelectedConversationIndex] = useState<number>(-1);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [allTags, setAllTags] = useState<TagType[]>([]);
@@ -245,10 +260,12 @@ export default function App() {
   const [newTagName, setNewTagName] = useState("");
   const listRequestId = useRef(0);
   const searchDebounceRef = useRef<number | null>(null);
+  const selectedConversationTitle = selectedConversation?.title || conversations.find(conv => conv.id === selectedConversationId)?.title;
   const currentThemeLabel = THEMES.find(t => t.id === theme)?.label ?? 'Dark';
 
   useEffect(() => {
-    setUnauthorizedHandler(() => setAuthorized(false));
+    setUnauthorizedHandler(() => { clearConversation(); setAuthorized(false); });
+    return () => { detailRequestId.current += 1; };
   }, []);
 
   // Load conversations on mount (once authorized)
@@ -280,6 +297,7 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || paletteOpen) return;
       // Ignore if user is typing in an input
       const target = e.target as HTMLElement;
       if (
@@ -342,23 +360,6 @@ export default function App() {
         setShowSettingsModal(true);
       }
 
-      // Arrow keys: Navigate conversations
-      if (e.key === 'ArrowDown' && conversations.length > 0) {
-        e.preventDefault();
-        const newIndex = Math.min(selectedConversationIndex + 1, conversations.length - 1);
-        setSelectedConversationIndex(newIndex);
-        setAnalyticsView(false);
-        loadConversation(conversations[newIndex].id);
-      }
-
-      if (e.key === 'ArrowUp' && conversations.length > 0) {
-        e.preventDefault();
-        const newIndex = Math.max(selectedConversationIndex - 1, 0);
-        setSelectedConversationIndex(newIndex);
-        setAnalyticsView(false);
-        loadConversation(conversations[newIndex].id);
-      }
-
       // Ctrl/Cmd + E: Export current conversation
       if ((e.ctrlKey || e.metaKey) && e.key === 'e' && selectedConversation) {
         e.preventDefault();
@@ -380,15 +381,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [conversations, selectedConversationIndex, selectedConversation, showMenu, sidebarCollapsed, showImportModal, showSettingsModal, showDuplicatesModal, showTagModal, showProjectModal, showMoveToProjectModal, showShortcutsModal]);
-
-  // Update selected index when conversations change
-  useEffect(() => {
-    if (selectedConversation && conversations.length > 0) {
-      const index = conversations.findIndex(c => c.id === selectedConversation.id);
-      setSelectedConversationIndex(index);
-    }
-  }, [selectedConversation, conversations]);
+  }, [paletteOpen, conversations, selectedConversation, showMenu, sidebarCollapsed, showImportModal, showSettingsModal, showDuplicatesModal, showTagModal, showProjectModal, showMoveToProjectModal, showShortcutsModal]);
 
   // Sidebar resize handlers
   const startResize = (e: React.MouseEvent) => {
@@ -576,32 +569,43 @@ export default function App() {
     refreshConversationList(nextPage);
   };
 
+  const clearConversation = () => {
+    // Invalidate pending detail requests when leaving the reader.
+    detailRequestId.current += 1;
+    setSelectedConversationId(null);
+    setSelectedConversation(null);
+    setDetailLoading(false);
+    setDetailError(null);
+  };
+
   const loadConversation = async (id: number) => {
+    const requestId = ++detailRequestId.current;
+    setSelectedConversationId(id);
+    setSelectedConversation(null);
+    setDetailLoading(true);
+    setDetailError(null);
+    setAnalyticsView(false);
     try {
       const response = await apiFetch(`${API_URL}/conversations/${id}`);
+      if (requestId !== detailRequestId.current) return;
       if (!response.ok) {
-        if (standaloneMode) {
-          setStandaloneError("Conversation not found.");
-        } else {
-          alert("Couldn't open that conversation. It may have been deleted.");
-        }
+        setDetailError(response.status === 404
+          ? "Conversation not found. It may have been deleted."
+          : "Couldn't load conversation. Please try again.");
         return;
       }
-      const data = await response.json();
-      if (!data || !Array.isArray(data.messages)) {
-        if (standaloneMode) {
-          setStandaloneError("Conversation could not be loaded.");
-        }
+      const data: ConversationDetail = await response.json();
+      if (requestId !== detailRequestId.current) return;
+      if (!data || data.id !== id || !Array.isArray(data.messages)) {
+        setDetailError("Conversation could not be loaded. Please try again.");
         return;
       }
-      setStandaloneError(null);
-      setAnalyticsView(false);
       setSelectedConversation(data);
-    } catch (error) {
-      console.error("Failed to load conversation:", error);
-      if (standaloneMode) {
-        setStandaloneError("Couldn't load conversation.");
-      }
+    } catch {
+      if (requestId !== detailRequestId.current) return;
+      setDetailError("Couldn't load conversation. Please try again.");
+    } finally {
+      if (requestId === detailRequestId.current) setDetailLoading(false);
     }
   };
 
@@ -949,7 +953,7 @@ export default function App() {
         alert('Failed to delete conversation. Please try again.');
         return;
       }
-      setSelectedConversation(null);
+      clearConversation();
       const nextPage = conversations.length <= 1 && currentPage > 1 ? currentPage - 1 : currentPage;
       refreshConversationList(nextPage);
       setShowMenu(false);
@@ -1341,7 +1345,7 @@ export default function App() {
     return (
       <div className="app-container standalone-view">
         <div className="standalone-header">
-          <h1 className="standalone-title">{selectedConversation?.title || "Loading..."}</h1>
+          <h1 className="standalone-title">{selectedConversationTitle || (detailError ? "Conversation unavailable" : "Loading...")}</h1>
           <a
             href={window.location.pathname}
             target="_self"
@@ -1351,10 +1355,11 @@ export default function App() {
             ← Back to ChatArchive
           </a>
         </div>
-        <div className="standalone-content">
-          {standaloneError ? (
+        <div className="standalone-content" aria-busy={detailLoading}>
+          {detailError ? (
             <div className="welcome-state">
-              <p>{standaloneError}</p>
+              <p role="alert">{detailError}</p>
+              <button className="empty-action-btn" onClick={() => selectedConversationId !== null && loadConversation(selectedConversationId)}>Retry</button>
             </div>
           ) : selectedConversation ? (
             <div className="conversation-view">
@@ -1391,7 +1396,7 @@ export default function App() {
             </div>
           ) : (
             <div className="welcome-state">
-              <p>Loading conversation...</p>
+              <p role="status">Loading conversation...</p>
             </div>
           )}
         </div>
@@ -1400,7 +1405,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app-container${fullWidthConvo && selectedConversation ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
+    <div className={`app-container${fullWidthConvo && selectedConversationId !== null ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
       <div className="theme-transition-wash" key={theme} aria-hidden="true" />
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}>
@@ -1441,8 +1446,8 @@ export default function App() {
           {!sidebarCollapsed && (
             <div className="sidebar-top">
               <button
-                className={`sidebar-home-btn${!analyticsView && !selectedConversation ? " active" : ""}`}
-                onClick={() => { setAnalyticsView(false); setSelectedConversation(null); }}
+                className={`sidebar-home-btn${!analyticsView && selectedConversationId === null ? " active" : ""}`}
+                onClick={() => { setAnalyticsView(false); clearConversation(); }}
               >
                 <Home size={14} />
                 Home
@@ -1687,7 +1692,7 @@ export default function App() {
                 <div className="sidebar-tool-grid">
                   <button
                     className={`sidebar-tool-btn${analyticsView ? " active" : ""}`}
-                    onClick={() => { setAnalyticsView(true); setSelectedConversation(null); }}
+                    onClick={() => { setAnalyticsView(true); clearConversation(); }}
                   >
                     <BarChart2 size={16} />
                     Analytics
@@ -1727,7 +1732,18 @@ export default function App() {
             </div>
           )}
 
-          <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar">
+          <div className="conversations-list sidebar-list" aria-label="Conversation list in sidebar"
+            onKeyDown={(e) => {
+              const target = e.target;
+              if (!(target instanceof HTMLElement) || !target.matches('.conversation-card')) return;
+              if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+              e.preventDefault();
+              const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('.conversation-card'));
+              const index = cards.indexOf(target);
+              const next = Math.max(0, Math.min(cards.length - 1, index + (e.key === "ArrowDown" ? 1 : -1)));
+              cards[next]?.focus();
+              if (conversations[next]) loadConversation(conversations[next].id);
+            }}>
             {loading || isSearching ? (
               <div className="skeleton-container">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -1790,10 +1806,10 @@ export default function App() {
                         </div>
                       )}
                 <div
-                  className={`conversation-card ${selectedConversation?.id === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
+                  className={`conversation-card ${selectedConversationId === conv.id ? "active" : ""} ${draggedConversationId === conv.id ? "dragging" : ""}`}
                   role="button"
                   tabIndex={0}
-                  aria-pressed={selectedConversation?.id === conv.id}
+                  aria-pressed={selectedConversationId === conv.id}
                   aria-label={conv.title || "Untitled conversation"}
                   onClick={() => loadConversation(conv.id)}
                   onKeyDown={(e) => {
@@ -1980,9 +1996,9 @@ export default function App() {
               <h2 className="header-title">
                 {analyticsView
                   ? "What your archive tells you"
-                  : selectedConversation?.title || "Browse and organize your conversations"}
+                  : selectedConversationTitle || (selectedConversationId !== null ? "Opening conversation" : "Browse and organize your conversations")}
               </h2>
-              {!selectedConversation && !analyticsView && (
+              {selectedConversationId === null && !analyticsView && (
                 <p className="header-subtitle">
                   Use the sidebar to filter the archive, then pick a conversation to preview here or open it in a
                   dedicated window.
@@ -2161,9 +2177,16 @@ export default function App() {
           )}
         </header>
 
-        <div className="content-area content-area-scrollable">
+        <div className="content-area content-area-scrollable" aria-busy={detailLoading}>
           {analyticsView ? (
             <AnalyticsScreen range={analyticsRange} />
+          ) : detailLoading || detailError ? (
+            <div className="welcome-state">
+              {detailLoading ? <p role="status">Loading conversation...</p> : <>
+                <p role="alert">{detailError}</p>
+                <button className="empty-action-btn" onClick={() => selectedConversationId !== null && loadConversation(selectedConversationId)}>Retry</button>
+              </>}
+            </div>
           ) : !selectedConversation ? (
             <div className="overview-layout">
               <section className="overview-hero">
@@ -2513,7 +2536,7 @@ export default function App() {
         <SettingsModal
           onClose={() => setShowSettingsModal(false)}
           onConversationsChanged={() => {
-            setSelectedConversation(null);
+            clearConversation();
             loadTags();
             loadProjects();
             refreshConversationList(1);
@@ -2567,8 +2590,17 @@ export default function App() {
 
       <div className="theme-palette-wrapper">
         <button
+          ref={paletteTriggerRef}
           className="theme-palette-btn"
-          onClick={() => setPaletteOpen(o => !o)}
+          aria-haspopup="menu"
+          aria-controls={paletteOpen ? "theme-palette-menu" : undefined}
+          onClick={() => paletteOpen ? dismissPalette() : setPaletteOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              setPaletteOpen(true);
+            }
+          }}
           title="Choose theme"
           aria-label={`Choose theme. Current: ${currentThemeLabel}`}
           aria-expanded={paletteOpen}
@@ -2580,10 +2612,28 @@ export default function App() {
           <>
             <div
               style={{ position: 'fixed', inset: 0, zIndex: 499 }}
-              onClick={() => setPaletteOpen(false)}
+              data-testid="theme-palette-backdrop"
+              onClick={() => dismissPalette()}
             />
             <div
+              ref={paletteMenuRef}
+              id="theme-palette-menu"
               className="theme-palette-menu"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  dismissPalette();
+                } else if (e.key === "Tab") {
+                  dismissPalette(false);
+                } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+                  e.preventDefault();
+                  const options = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+                  const index = options.findIndex(option => option === document.activeElement);
+                  const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1
+                    : (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+                  options[next]?.focus();
+                }
+              }}
               role="menu"
               aria-label="Theme palette"
               style={{ zIndex: 501 }}
@@ -2596,7 +2646,8 @@ export default function App() {
                 <button
                   key={t.id}
                   className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                  onClick={() => { setTheme(t.id); setPaletteOpen(false); }}
+                  onClick={() => { setTheme(t.id); dismissPalette(); }}
+                  tabIndex={-1}
                   role="menuitemradio"
                   aria-label={t.label}
                   aria-checked={theme === t.id}
@@ -4136,7 +4187,7 @@ function KeyboardShortcutsModal({ onClose }: { onClose: () => void }) {
     ["Ctrl/Cmd + ,", "Open settings"],
     ["Ctrl/Cmd + E", "Open export menu"],
     ["Ctrl/Cmd + B", "Toggle sidebar"],
-    ["Arrow Up / Down", "Navigate conversations"],
+    ["Arrow Up / Down", "Navigate conversations when a list row is focused"],
     ["Esc", "Close open overlays"],
     ["Shift + ?", "Open keyboard shortcuts"],
   ];
