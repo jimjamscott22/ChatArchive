@@ -1,8 +1,8 @@
 # Frontend review checklist and initial plan
 
-Recorded on 2026-10-09 from the supplied React Best Practices review. Findings 1 and 3 are complete; the remaining items
-remain open. Check off a finding only after its behavior and acceptance checks
-have been verified.
+Recorded on 2026-10-09 from the supplied React Best Practices review.
+Findings 1–3 are complete; findings 4–6 remain open. Check off a finding only
+after its behavior and acceptance checks have been verified.
 
 The review identified opportunities for more reliable conversation switching,
 smoother long-thread reading, and better keyboard behavior while preserving
@@ -20,7 +20,7 @@ tests and a production build; it did not include a visual browser audit.
   error with Retry. Keep the selected row and reader consistent.
   Evidence: [conversation loading](../frontend/src/App.tsx#L579).
 
-- [ ] **2. High priority — Isolate the expensive Markdown reader from unrelated UI updates.**
+- [x] **2. High priority — Isolate the expensive Markdown reader from unrelated UI updates.**
   Markdown and syntax highlighting render inside the main `App` component,
   which also rerenders for search typing, sidebar resizing, and menu changes.
   The main reader and standalone view duplicate the rendering path.
@@ -86,8 +86,8 @@ implementation progresses and have not been revalidated for this document.
 
 Preserve existing styles, CSS theme tokens, menu radio semantics, reduced-motion
 support, and the authenticated `apiFetch()` path. Use the existing frontend test
-patterns and update fetch mocks where needed. The first two steps are implemented and verified below. Reader optimization
-remains the next step.
+patterns and update fetch mocks where needed. All three initial steps are
+implemented and verified below.
 
 1. [x] **Make conversation loading reliable (finding 1).**
    Update `frontend/src/App.tsx` with a request identity guard and dedicated
@@ -107,7 +107,7 @@ remains the next step.
    dismissal restores focus. Check theme persistence and keyboard use in a
    browser, including dismissal by clicking outside the picker.
 
-3. [ ] **Share and memoize the Markdown reader (finding 2).**
+3. [x] **Share and memoize the Markdown reader (finding 2).**
    Record a React Profiler baseline for a long, code-heavy conversation.
    Extract `frontend/src/components/ConversationReader.tsx` for both normal
    and standalone views, keep Markdown configuration stable, and memoize
@@ -155,5 +155,62 @@ outside dismissal. Shortcut help now describes the list-only arrow scope.
 - No live database/provider verification or full contrast audit across all 11
   themes was performed. Backend code and API contracts were unchanged.
 
-Finding 2 (shared memoized reader and profiling) is next. Findings 4–6 remain
-queued. No performance improvement is claimed by this pass.
+Findings 4–6 remain queued. The first pass did not include performance changes;
+reader profiling and optimization are recorded below.
+
+## Shared reader verification — 2026-10-12 (finding 2)
+
+Both normal and standalone viewing paths now use the memoized
+`frontend/src/components/ConversationReader.tsx`. Its props are the conversation
+ID, source, original message array, and query string. Ordering is cached by the
+message-array identity. Shared presentation and search-highlight helpers also
+serve the existing list and export paths.
+
+Markdown components and the highlighting plugin array now have stable module
+identities. Each message's Markdown parser is memoized independently of the
+query; query context updates the prose-highlight components without reparsing
+Markdown or recreating syntax-highlighted code. Search highlighting excludes
+inline and fenced code and avoids nested marks. Existing classes, timestamps,
+provider labels, resource panels, and theme CSS remain in use.
+
+React 18 development Profiler measurements in local headless Chromium used one
+synthetic thread with 100 messages, each containing prose, headings, links,
+lists, inline code, and a 20-line TypeScript code block. The same interaction
+script ran before and after extraction, without CPU throttling:
+
+| Interaction | Before: median reader render | After: median reader render |
+| --- | ---: | ---: |
+| Open/close theme menu (10 commits) | 404.0 ms | 0.0 ms |
+| Drag sidebar width (12 commits) | 395.2 ms | 0.0 ms |
+| Type “search” (12 before / 8 after commits) | 470.1 ms | 14.4 ms |
+
+Typing's maximum reader render fell from 523.1 ms to 23.0 ms. Commit counts
+include list-request state changes. Zero indicates the memoized reader skipped
+render work at the Profiler's resolution; it does not mean the entire app update
+was free. These are synthetic development measurements, not production latency
+guarantees. Temporary Profiler instrumentation, scripts, JSON measurements, and
+screenshots were kept outside committed source; instrumentation was removed.
+
+Repeated Markdown parsing was the measured interaction bottleneck, so no
+incremental rendering was introduced. First-open parsing still renders the full
+thread and production first-open latency was not benchmarked.
+
+- `cd frontend && npm test`: **29 tests passed**, including three reader tests
+  and two normal/standalone integration cases added in this pass. Coverage
+  includes immutable ordering, metadata, Markdown/link/code output, resources,
+  content updates, parser reuse on parent/query updates, stable code DOM,
+  changing/clearing highlights, and exclusion of code/nested marks.
+- `cd frontend && npm run build`: **passed** TypeScript and Vite compilation.
+  Entry JavaScript remains **537.61 kB (163.72 kB gzipped)** with the existing
+  bundle-size warning. Finding 5 remains open; no lazy loading was added.
+- Playwright/Chromium against `http://127.0.0.1:5174/`, with mocked API responses:
+  normal and standalone readers produced matching visible content; message
+  order, resource panels, prose highlights, code highlighting, and links were
+  verified. All 11 theme selections worked. Desktop (1440 × 1000), mobile
+  (390 × 844), and standalone screenshots were captured and desktop/mobile
+  screenshots visually inspected. No unexpected console errors/warnings,
+  uncaught application errors, blank screen, or framework overlay occurred.
+  The Browser skill/plugin was unavailable, so bundled Playwright was used.
+- No live database/provider check or full theme-contrast audit was performed.
+
+The initial three-step plan is complete. Findings 4–6 remain queued.

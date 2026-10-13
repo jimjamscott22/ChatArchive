@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github-dark.css";
 import ModalShell from "./components/ModalShell";
 import AuthGate from "./components/AuthGate";
-import ConversationResources from "./components/ConversationResources";
+import ConversationReader from "./components/ConversationReader";
+import { formatDateTime, getSourceInfo, orderMessages, type Message } from "./utils/conversationPresentation";
+import { renderHighlightedText } from "./utils/searchHighlight";
 import { API_URL, apiFetch, apiErrorMessage, getToken, setUnauthorizedHandler } from "./api";
 
 const PAGE_SIZE = 100;
@@ -69,14 +68,6 @@ type ProjectType = {
   color?: string | null;
   created_at: string;
   conversation_count: number;
-};
-
-type Message = {
-  id: number;
-  role: string;
-  content: string;
-  created_at?: string | null;
-  order_index: number;
 };
 
 type ConversationDetail = Conversation & {
@@ -853,19 +844,6 @@ export default function App() {
     return date.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
   };
 
-  const formatDateTime = (dateStr: string | null | undefined): string => {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    if (Number.isNaN(date.getTime())) return dateStr;
-    return date.toLocaleString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const getPreview = (title: string | null | undefined): string => {
     if (!title) return "Untitled conversation";
     return title.length > 60 ? title.slice(0, 60) + "..." : title;
@@ -920,16 +898,6 @@ export default function App() {
     const wordsPerMinute = 200;
     const minutes = Math.ceil(wordCount / wordsPerMinute);
     return minutes === 1 ? "1 min read" : `${minutes} min read`;
-  };
-
-  const getSourceInfo = (source: string) => {
-    const sources: Record<string, { icon: string; name: string; color: string }> = {
-      chatgpt: { icon: '💬', name: 'ChatGPT', color: 'var(--chatgpt-color)' },
-      claude: { icon: '🤖', name: 'Claude', color: 'var(--claude-color)' },
-      gemini: { icon: '✨', name: 'Gemini', color: 'var(--gemini-color)' },
-      copilot: { icon: '👨‍💻', name: 'Copilot', color: 'var(--copilot-color)' },
-    };
-    return sources[source] || { icon: '📝', name: source, color: 'var(--accent)' };
   };
 
   const handleSourceFilter = (source: string) => {
@@ -995,7 +963,7 @@ export default function App() {
   };
 
   const getOrderedMessages = (conversation: ConversationDetail): Message[] => {
-    return [...conversation.messages].sort((a, b) => a.order_index - b.order_index);
+    return orderMessages(conversation.messages);
   };
 
   const getExportFilename = (conversation: ConversationDetail, extension: string): string => {
@@ -1022,80 +990,6 @@ export default function App() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
-  };
-
-  const escapeRegExp = (value: string): string => {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  };
-
-  const renderHighlightedText = (text: string, query: string): React.ReactNode => {
-    const trimmed = query.trim();
-    if (!trimmed) return text;
-    const tokens = trimmed.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return text;
-    const escapedTokens = tokens.map(escapeRegExp);
-    const regex = new RegExp(`(${escapedTokens.join("|")})`, "gi");
-    const lowerTokens = new Set(tokens.map((token) => token.toLowerCase()));
-    return text.split(regex).map((part, index) => {
-      if (lowerTokens.has(part.toLowerCase())) {
-        return (
-          <mark key={`${part}-${index}`} className="search-highlight">
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
-  };
-
-  const applyHighlightToNode = (node: React.ReactNode, query: string): React.ReactNode => {
-    const trimmed = query.trim();
-    if (!trimmed) return node;
-    if (typeof node === "string") {
-      return renderHighlightedText(node, trimmed);
-    }
-    if (Array.isArray(node)) {
-      return node.map((child, index) => (
-        <React.Fragment key={index}>{applyHighlightToNode(child, trimmed)}</React.Fragment>
-      ));
-    }
-    if (React.isValidElement(node)) {
-      const elementType = typeof node.type === "string" ? node.type : "";
-      if (elementType === "code" || elementType === "pre") {
-        return node;
-      }
-      const children = node.props?.children;
-      if (!children) return node;
-      return React.cloneElement(node, {
-        ...node.props,
-        children: applyHighlightToNode(children, trimmed),
-      });
-    }
-    return node;
-  };
-
-  const getHighlightMarkdownComponents = (query: string) => {
-    const withHighlight =
-      (Tag: keyof JSX.IntrinsicElements) =>
-      ({ children, ...props }: any) =>
-        (
-          <Tag {...props}>{applyHighlightToNode(children, query)}</Tag>
-        );
-    return {
-      p: withHighlight("p"),
-      li: withHighlight("li"),
-      h1: withHighlight("h1"),
-      h2: withHighlight("h2"),
-      h3: withHighlight("h3"),
-      h4: withHighlight("h4"),
-      h5: withHighlight("h5"),
-      h6: withHighlight("h6"),
-      blockquote: withHighlight("blockquote"),
-      strong: withHighlight("strong"),
-      em: withHighlight("em"),
-      a: withHighlight("a"),
-      span: withHighlight("span"),
-    };
   };
 
   const buildMarkdownExport = (conversation: ConversationDetail): string => {
@@ -1287,7 +1181,6 @@ export default function App() {
   };
 
   const highlightQuery = searchQuery.trim();
-  const markdownComponents = highlightQuery ? getHighlightMarkdownComponents(highlightQuery) : undefined;
   const sourceBreakdown = Object.entries(
     conversations.reduce((acc, conv) => {
       acc[conv.source] = (acc[conv.source] || 0) + 1;
@@ -1362,38 +1255,12 @@ export default function App() {
               <button className="empty-action-btn" onClick={() => selectedConversationId !== null && loadConversation(selectedConversationId)}>Retry</button>
             </div>
           ) : selectedConversation ? (
-            <div className="conversation-view">
-              {getOrderedMessages(selectedConversation).map((msg, index) => (
-                <div key={msg.id} className={`message ${msg.role}`}>
-                  <div className="message-header">
-                    <div className="message-avatar">
-                      {msg.role === "user" ? (
-                        <div className="user-avatar">👤</div>
-                      ) : (
-                        <div className="assistant-avatar" data-source={selectedConversation.source}>
-                          {getSourceInfo(selectedConversation.source).icon}
-                        </div>
-                      )}
-                    </div>
-                    <div className="message-meta">
-                      <div className="message-role">
-                        {msg.role === "user" ? "You" : getSourceInfo(selectedConversation.source).name}
-                      </div>
-                      <div className="message-time">
-                        {formatDateTime(msg.created_at)}
-                        <span className="message-number">Message {index + 1}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="message-content markdown-content">
-                    <ReactMarkdown rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              ))}
-              <ConversationResources conversationId={selectedConversation.id} />
-            </div>
+            <ConversationReader
+              conversationId={selectedConversation.id}
+              source={selectedConversation.source}
+              messages={selectedConversation.messages}
+              highlightQuery={highlightQuery}
+            />
           ) : (
             <div className="welcome-state">
               <p role="status">Loading conversation...</p>
@@ -2483,38 +2350,12 @@ export default function App() {
               )}
             </div>
           ) : (
-            <div className="conversation-view">
-              {getOrderedMessages(selectedConversation).map((msg, index) => (
-                <div key={msg.id} className={`message ${msg.role}`}>
-                  <div className="message-header">
-                    <div className="message-avatar">
-                      {msg.role === "user" ? (
-                        <div className="user-avatar">👤</div>
-                      ) : (
-                        <div className="assistant-avatar" data-source={selectedConversation.source}>
-                          {getSourceInfo(selectedConversation.source).icon}
-                        </div>
-                      )}
-                    </div>
-                    <div className="message-meta">
-                      <div className="message-role">
-                        {msg.role === "user" ? "You" : getSourceInfo(selectedConversation.source).name}
-                      </div>
-                      <div className="message-time">
-                        {formatDateTime(msg.created_at)}
-                        <span className="message-number">Message {index + 1}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="message-content markdown-content">
-                    <ReactMarkdown rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              ))}
-              <ConversationResources conversationId={selectedConversation.id} />
-            </div>
+            <ConversationReader
+              conversationId={selectedConversation.id}
+              source={selectedConversation.source}
+              messages={selectedConversation.messages}
+              highlightQuery={highlightQuery}
+            />
           )}
         </div>
       </main>

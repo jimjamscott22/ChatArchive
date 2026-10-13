@@ -268,6 +268,25 @@ describe("App UI improvements", () => {
     }
   });
 
+  it.each([false, true])("renders the ordered Markdown reader in standalone=%s mode", async (standalone) => {
+    if (standalone) window.history.replaceState({}, "", "?conversation=1");
+    installFetchMock({ detail: async () => jsonResponse({ ...baseConversation, messages: [
+      { id: 2, role: "assistant", content: "## Shared reader\n\n```typescript\nconst answer = 42;\n```", order_index: 1 },
+      { id: 1, role: "user", content: "Earlier question", order_index: 0 },
+    ] }) });
+    try {
+      render(<App />);
+      if (!standalone) fireEvent.click(await screen.findByRole("button", { name: "Refactor search filters" }));
+      await screen.findByRole("heading", { name: "Shared reader" });
+      const rows = document.querySelectorAll(".conversation-view .message");
+      expect(rows[0]).toHaveTextContent("Earlier question");
+      expect(rows[1]).toHaveTextContent("Shared reader");
+      expect(rows[1].querySelector("code .hljs-keyword")).toHaveTextContent("const");
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
   it("scopes conversation arrows to focused list rows", async () => {
     const fetchMock = installFetchMock({ twoConversations: true, detail: async (id) => jsonResponse({ ...baseConversation, id, title: id === 1 ? baseConversation.title : "Second thread", messages: [] }) });
     render(<App />);
