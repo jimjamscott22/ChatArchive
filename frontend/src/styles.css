@@ -317,6 +317,52 @@
   --key-shadow-press: inset 0 1px 0 rgba(0,0,0,0.5), inset 0 -1px 0 rgba(255,255,255,0.04);
 }
 
+[data-theme="modernist"] {
+  /* Modernist: light ground, ink text, one red accent. Values from the
+     Claude Design handoff (docs/styles/ChatArchive UI layout options.zip). */
+  --bg-primary: #f3f2f2;
+  --bg-secondary: #eae9e9;
+  --bg-tertiary: #eae7e7;
+  --app-background: #f3f2f2;
+  --text-primary: #201e1d;
+  --text-secondary: #444141;
+  --text-muted: #605d5d;
+  --border-color: color-mix(in srgb, #201e1d 40%, transparent);
+  --accent: #ec3013;
+  --accent-hover: #dd2b0f;
+  --accent-subtle: #fff2ef;
+  --surface-panel: #f3f2f2;
+  --surface-panel-strong: #eae9e9;
+  --surface-elevated: #f3f2f2;
+  --hero-gradient: linear-gradient(#f3f2f2, #f3f2f2);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  --shadow-xl: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  --gradient-subtle: linear-gradient(#f3f2f2, #f3f2f2);
+  --gradient-accent: linear-gradient(#ec3013, #ec3013);
+  --key-shadow: none;
+  --key-shadow-press: none;
+  --claude-color: #ae1800;
+  /* Modernist design-system tokens, kept under their original names. */
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --font-modernist: "Archivo", system-ui, sans-serif;
+  --timeline-claude: #ae1800;
+}
+
 /* Semantic atmosphere tokens keep the layout consistent while giving each
    palette its own canvas, navigation, reading, and message materials. */
 :root,
@@ -593,6 +639,32 @@
   --header-spectrum: linear-gradient(90deg, transparent 0%, #4f774b 24%, #a8d880 52%, #6d9f59 76%, transparent 100%);
   --theme-button-surface: linear-gradient(145deg, #4a6545 0%, #1d2b1d 100%);
   --selection-glow: rgba(168, 216, 128, 0.22);
+}
+
+
+[data-theme="modernist"] {
+  color-scheme: light;
+  --canvas-surface: #f3f2f2;
+  --canvas-atmosphere: #f3f2f2;
+  --sidebar-surface: #f3f2f2;
+  --sidebar-panel-surface: transparent;
+  --header-surface: #f3f2f2;
+  --reader-surface: #f3f2f2;
+  --reader-panel-surface: #eae9e9;
+  --user-message-surface: #eae9e9;
+  --assistant-message-surface: #f3f2f2;
+  --message-content-surface: #f8f4f4;
+  --control-surface: #eae9e9;
+  --control-hover-surface: #d7d3d3;
+  --overlay-surface: #f3f2f2;
+  --texture-line: transparent;
+  --ambient-glow: transparent;
+  --theme-flare: transparent;
+  --theme-motif: none;
+  --theme-motif-size: auto;
+  --header-spectrum: linear-gradient(90deg, transparent, transparent);
+  --theme-button-surface: #f3f2f2;
+  --selection-glow: color-mix(in srgb, #ec3013 30%, transparent);
 }
 
 * {
@@ -5466,4 +5538,707 @@ dialog.confirmation-modal {
   min-width: 0;
   width: min(480px, calc(100vw - 24px));
   box-sizing: border-box;
+}
+
+/* ==========================================================================
+   App shell: top navigation (Library · Timeline · Projects · Analytics)
+   Uses the shared tokens so it works in every theme; Modernist values come
+   from the token layers above.
+   ========================================================================== */
+.app-shell {
+  --rule: color-mix(in srgb, var(--text-primary) 40%, transparent);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell > .app-container {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 28px;
+  border-bottom: 2px solid var(--rule);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+
+.top-nav-brand {
+  font-size: 20px;
+  font-weight: 800;
+  margin-right: 24px;
+  white-space: nowrap;
+}
+
+.top-nav-links {
+  display: flex;
+  gap: 16px;
+}
+
+.top-nav-link {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.top-nav-link:hover,
+.top-nav-link[aria-current="page"] {
+  color: var(--accent);
+}
+
+.top-nav-spacer {
+  flex: 1;
+}
+
+.top-nav-search {
+  position: relative;
+  width: 260px;
+}
+
+.top-nav-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.top-nav-search input {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px 6px 32px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  caret-color: var(--accent);
+  background: var(--bg-secondary);
+  border: 1px solid var(--rule);
+}
+
+.top-nav-search input:hover {
+  border-color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+
+.top-nav-search input:focus-visible {
+  border-color: var(--accent);
+  outline-offset: 0;
+}
+
+.top-nav-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.top-nav-icon:hover {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.top-nav-icon.top-nav-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+.top-nav-icon.top-nav-primary:hover {
+  background: var(--accent-hover);
+}
+
+/* ==========================================================================
+   Timeline screen (design handoff option 2c)
+   ========================================================================== */
+.app-container.timeline-active {
+  flex-direction: column;
+}
+
+.timeline-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.timeline-screen {
+  --rule: color-mix(in srgb, var(--text-primary) 40%, transparent);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-bottom: 2px solid var(--rule);
+  flex-shrink: 0;
+}
+
+.timeline-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 16px 28px 18px;
+  border-right: 1px solid var(--rule);
+}
+
+.timeline-stat:last-child {
+  border-right: 0;
+}
+
+.timeline-stat-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-stat-value {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.timeline-stat-value.timeline-stat-accent {
+  color: var(--accent);
+}
+
+.timeline-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 14px 28px;
+  flex-shrink: 0;
+}
+
+.timeline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timeline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+}
+
+.timeline-chip:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.timeline-chips-empty {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.timeline-pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-pager-btn,
+.timeline-retry {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  min-width: 36px;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--rule);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.timeline-retry {
+  display: inline-flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0 14px;
+}
+
+.timeline-pager-btn:hover:not(:disabled),
+.timeline-retry:hover {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.timeline-pager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.timeline-pager-label {
+  min-width: 150px;
+  padding: 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.timeline-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: auto;
+  margin: 0 28px;
+  border-top: 2px solid var(--rule);
+}
+
+.timeline-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--rule);
+}
+
+.timeline-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--rule);
+}
+
+.timeline-col-head.current {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.timeline-col-month {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  color: inherit;
+}
+
+.timeline-col-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-col-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.timeline-row:hover {
+  background: var(--bg-secondary);
+}
+
+.timeline-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.timeline-row-day {
+  padding-top: 1px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.timeline-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.timeline-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.timeline-row-meta {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.timeline-row-meta[data-source="claude"] {
+  color: var(--timeline-claude, var(--accent));
+}
+
+.timeline-row-skeleton {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 16px 0 52px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.timeline-row-skeleton span {
+  display: block;
+  height: 10px;
+  width: 80%;
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.timeline-row-skeleton span + span {
+  width: 40%;
+}
+
+.timeline-empty {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.timeline-error {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .timeline-stats {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .timeline-stat {
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
+@media (max-width: 800px) {
+  .top-nav {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 12px 16px;
+  }
+
+  .top-nav-brand {
+    margin-right: 8px;
+  }
+
+  .top-nav-spacer {
+    display: none;
+  }
+
+  .top-nav-search {
+    order: 10;
+    flex: 1 1 100%;
+    width: auto;
+  }
+
+  .top-nav-icon {
+    margin-left: auto;
+  }
+
+  .top-nav-icon + .top-nav-icon {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .top-nav-links {
+    gap: 12px;
+    overflow-x: auto;
+  }
+
+  .timeline-screen {
+    overflow-y: auto;
+  }
+
+  .timeline-stat {
+    padding: 12px 16px 14px;
+  }
+
+  .timeline-stat-value {
+    font-size: 28px;
+  }
+
+  .timeline-bar {
+    padding: 12px 16px;
+  }
+
+  .timeline-pager-label {
+    min-width: 0;
+  }
+
+  .timeline-grid {
+    margin: 0 16px;
+    flex: none;
+    height: 70vh;
+  }
+
+  .timeline-col {
+    border-left: 1px solid var(--rule);
+  }
+}
+
+/* ==========================================================================
+   Modernist global restyle: Archivo, square corners, rules instead of
+   shadows, flush-left button labels, red focus ring. Scoped to the theme so
+   the other palettes keep their own type and materials.
+   ========================================================================== */
+[data-theme="modernist"] body,
+[data-theme="modernist"] body *:not(code):not(pre):not(pre *):not(kbd):not(samp) {
+  font-family: var(--font-modernist) !important;
+}
+
+[data-theme="modernist"] body {
+  font-size: 15px;
+  line-height: 1.55;
+  background: var(--color-bg);
+}
+
+[data-theme="modernist"] *,
+[data-theme="modernist"] *::before,
+[data-theme="modernist"] *::after {
+  border-radius: 0 !important;
+}
+
+[data-theme="modernist"] *:not(dialog):not(.dropdown-menu):not(.theme-palette-menu) {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+[data-theme="modernist"] :focus {
+  outline: none;
+}
+
+[data-theme="modernist"] :focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px;
+}
+
+[data-theme="modernist"] ::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+[data-theme="modernist"] h1,
+[data-theme="modernist"] h2,
+[data-theme="modernist"] h3,
+[data-theme="modernist"] h4 {
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+}
+
+[data-theme="modernist"] label,
+[data-theme="modernist"] .sidebar-panel-label,
+[data-theme="modernist"] .header-kicker,
+[data-theme="modernist"] .overview-kicker,
+[data-theme="modernist"] .overview-section-label,
+[data-theme="modernist"] .overview-stat-label,
+[data-theme="modernist"] .sidebar-summary-label {
+  font-weight: 600;
+}
+
+/* Major regions are separated by 2px rules. */
+[data-theme="modernist"] .sidebar {
+  border-right: 2px solid var(--color-divider);
+}
+
+[data-theme="modernist"] .app-container.sidebar-right .sidebar {
+  border-left: 2px solid var(--color-divider);
+}
+
+[data-theme="modernist"] .main-header {
+  border-bottom: 2px solid var(--color-divider);
+}
+
+/* Button labels sit flush left. */
+[data-theme="modernist"] .import-btn,
+[data-theme="modernist"] .sidebar-tool-btn,
+[data-theme="modernist"] .sidebar-home-btn,
+[data-theme="modernist"] .empty-action-btn,
+[data-theme="modernist"] .overview-secondary-btn,
+[data-theme="modernist"] .menu-item {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Red is reserved for the primary action. */
+[data-theme="modernist"] .import-btn,
+[data-theme="modernist"] .empty-action-btn {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+  font-weight: 800;
+}
+
+[data-theme="modernist"] .import-btn:hover,
+[data-theme="modernist"] .empty-action-btn:hover {
+  background: var(--color-accent-600);
+}
+
+[data-theme="modernist"] .import-btn:active,
+[data-theme="modernist"] .empty-action-btn:active {
+  background: var(--color-accent-700);
+}
+
+[data-theme="modernist"] svg.lucide {
+  stroke-linecap: square;
+}
+
+[data-theme="modernist"] .theme-transition-wash {
+  display: none;
+}
+
+/* Theme picker lives in the top nav as an icon button. */
+.top-nav .theme-palette-wrapper {
+  position: relative;
+  inset: auto;
+  flex-shrink: 0;
+}
+
+.top-nav .theme-palette-menu {
+  top: calc(100% + 10px);
+  bottom: auto;
+  right: 0;
+  max-width: calc(100vw - 32px);
+  transform-origin: top right;
+}
+
+.top-nav .theme-palette-btn {
+  width: 36px;
+  height: 36px;
+  gap: 0;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--rule);
+  box-shadow: none;
+  transform: none;
+}
+
+.top-nav .theme-palette-btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  color: var(--accent);
+  border-color: var(--rule);
+  box-shadow: none;
+  transform: none;
+}
+
+.top-nav .theme-palette-label {
+  display: none;
+}
+
+/* The top nav carries the brand now. */
+.sidebar-header .logo {
+  visibility: hidden;
+}
+
+/* Modernist: tidy the Library's older typewriter details. */
+[data-theme="modernist"] button,
+[data-theme="modernist"] .overview-chip {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+[data-theme="modernist"] .header-subtitle,
+[data-theme="modernist"] .overview-description {
+  font-style: normal;
+}
+
+[data-theme="modernist"] .sidebar-home-btn.active {
+  background: transparent;
+  color: var(--color-accent);
+  border-color: var(--color-divider);
+}
+
+[data-theme="modernist"] .overview-stat-card,
+[data-theme="modernist"] .overview-panel,
+[data-theme="modernist"] .overview-hero,
+[data-theme="modernist"] .sidebar-panel,
+[data-theme="modernist"] .sidebar-summary-card,
+[data-theme="modernist"] .overview-conversation-card,
+[data-theme="modernist"] .overview-source-row,
+[data-theme="modernist"] .conversation-card {
+  border: 1px solid var(--color-divider);
+  background: transparent;
+}
+
+[data-theme="modernist"] .overview-hero {
+  border-top: 2px solid var(--color-divider);
+}
+
+[data-theme="modernist"] .conversation-card.active {
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+@media (max-width: 800px) {
+  .top-nav-brand { order: 0; }
+  .top-nav .top-nav-icon,
+  .top-nav .theme-palette-wrapper { order: 1; }
+  .top-nav .top-nav-primary { margin-left: auto; }
+  .top-nav-links { order: 2; flex: 1 1 100%; }
+  .top-nav-search { order: 3; }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home, ArrowLeft } from "lucide-react";
 import LazyFeature from "./components/LazyFeature";
 import useActionFeedback from "./components/useActionFeedback";
 import AuthGate from "./components/AuthGate";
@@ -16,12 +16,14 @@ const SettingsModal = lazy(() => import("./components/SettingsModal"));
 const DuplicatesModal = lazy(() => import("./components/DuplicatesModal"));
 const ProjectManagerModal = lazy(() => import("./components/ProjectManagerModal"));
 const AnalyticsScreen = lazy(() => import("./components/AnalyticsScreen"));
+const TimelineScreen = lazy(() => import("./components/TimelineScreen"));
 const MoveToProjectModal = lazy(() => import("./components/MoveToProjectModal"));
 const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal"));
 
 const PAGE_SIZE = 100;
 
 type ThemeId =
+  | 'modernist'
   | 'dark'
   | 'light'
   | 'sepia'
@@ -35,6 +37,7 @@ type ThemeId =
   | 'forest';
 
 const THEMES: { id: ThemeId; label: string; mood: string; swatch: string }[] = [
+  { id: 'modernist', label: 'Modernist', mood: 'Ink, rules & red', swatch: 'linear-gradient(135deg, #f3f2f2 0 38%, #201e1d 38% 72%, #ec3013 72%)' },
   { id: 'dark', label: 'Dark', mood: 'Brass noir', swatch: 'linear-gradient(135deg, #17130f 0 38%, #44331f 38% 72%, #d6a65b 72%)' },
   { id: 'light', label: 'Light', mood: 'Sunlit paper', swatch: 'linear-gradient(135deg, #fffaf0 0 38%, #e6d1aa 38% 72%, #8b4513 72%)' },
   { id: 'sepia', label: 'Sepia', mood: 'Old manuscript', swatch: 'linear-gradient(135deg, #f4e5c6 0 38%, #cda66c 38% 72%, #7d3e12 72%)' },
@@ -49,6 +52,10 @@ const THEMES: { id: ThemeId; label: string; mood: string; swatch: string }[] = [
 ];
 
 const THEME_STORAGE_KEY = 'chatarchive-theme';
+// One-time switch to the Modernist redesign for people who saved a theme before it existed.
+const MODERNIST_ADOPTED_KEY = 'chatarchive-modernist-adopted';
+
+type YearMonth = { year: number; month: number };
 
 // Check if we're in standalone conversation view (opened in new window)
 function getInitialConversationId(): number | null {
@@ -80,12 +87,21 @@ export default function App() {
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [analyticsView, setAnalyticsView] = useState(false);
   const [analyticsRange, setAnalyticsRange] = useState<"30d" | "all">("all");
+  const [timelineView, setTimelineView] = useState(false);
+  const [cameFromTimeline, setCameFromTimeline] = useState(false);
+  const [timelineRangeEnd, setTimelineRangeEnd] = useState<YearMonth>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
   const [theme, setTheme] = useState<ThemeId>(() => {
     try {
+      const adopted = localStorage.getItem(MODERNIST_ADOPTED_KEY);
+      localStorage.setItem(MODERNIST_ADOPTED_KEY, '1');
       const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
-      if (saved && THEMES.some(t => t.id === saved)) return saved;
+      if (adopted && saved && THEMES.some(t => t.id === saved)) return saved;
     } catch { /* ignore */ }
-    return 'dark';
+    return 'modernist';
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const paletteTriggerRef = useRef<HTMLButtonElement>(null);
@@ -147,7 +163,7 @@ export default function App() {
   const listRequestId = useRef(0);
   const searchDebounceRef = useRef<number | null>(null);
   const selectedConversationTitle = selectedConversation?.title || conversations.find(conv => conv.id === selectedConversationId)?.title;
-  const currentThemeLabel = THEMES.find(t => t.id === theme)?.label ?? 'Dark';
+  const currentThemeLabel = THEMES.find(t => t.id === theme)?.label ?? 'Modernist';
 
   useEffect(() => {
     setUnauthorizedHandler(() => { clearConversation(); setAuthorized(false); });
@@ -228,7 +244,7 @@ export default function App() {
       // Ctrl/Cmd + K: Focus search
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        const searchInput = document.querySelector('.search-box input') as HTMLInputElement;
+        const searchInput = document.getElementById('conversation-search') as HTMLInputElement | null;
         if (searchInput) {
           searchInput.focus();
         }
@@ -472,6 +488,7 @@ export default function App() {
     setDetailLoading(true);
     setDetailError(null);
     setAnalyticsView(false);
+    setTimelineView(false);
     try {
       const response = await apiFetch(`${API_URL}/conversations/${id}`);
       if (requestId !== detailRequestId.current) return;
@@ -1134,6 +1151,41 @@ export default function App() {
     dateTo ? `To: ${dateTo}` : null,
   ].filter((value): value is string => Boolean(value));
 
+  const showLibrary = () => {
+    setTimelineView(false);
+    setAnalyticsView(false);
+    setCameFromTimeline(false);
+    clearConversation();
+  };
+
+  const showAnalytics = () => {
+    setTimelineView(false);
+    setAnalyticsView(true);
+    setCameFromTimeline(false);
+    clearConversation();
+  };
+
+  const showTimeline = () => {
+    setAnalyticsView(false);
+    setCameFromTimeline(false);
+    clearConversation();
+    setTimelineView(true);
+  };
+
+  const openFromTimeline = (id: number) => {
+    setCameFromTimeline(true);
+    loadConversation(id);
+  };
+
+  const refreshAfterImport = () => {
+    loadTags();
+    loadProjects();
+    refreshConversationList(1);
+    setTimelineRefreshKey((key) => key + 1);
+  };
+
+  const activeScreen = timelineView ? "timeline" : analyticsView ? "analytics" : "library";
+
   if (!authorized) {
     return <AuthGate onSuccess={() => setAuthorized(true)} />;
   }
@@ -1179,9 +1231,133 @@ export default function App() {
   }
 
   return (
-    <div className={`app-container${fullWidthConvo && selectedConversationId !== null ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
+    <div className="app-shell">
+      <nav className="top-nav" aria-label="Primary">
+        <span className="top-nav-brand">ChatArchive</span>
+        <div className="top-nav-links">
+          <button type="button" className="top-nav-link" aria-current={activeScreen === "library" ? "page" : undefined} onClick={showLibrary}>Library</button>
+          <button type="button" className="top-nav-link" aria-current={activeScreen === "timeline" ? "page" : undefined} onClick={showTimeline}>Timeline</button>
+          <button type="button" className="top-nav-link" onClick={() => setShowProjectModal(true)}>Projects</button>
+          <button type="button" className="top-nav-link" aria-current={activeScreen === "analytics" ? "page" : undefined} onClick={showAnalytics}>Analytics</button>
+        </div>
+        <span className="top-nav-spacer" />
+        <div className="top-nav-search">
+          <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
+          <Search size={15} className="top-nav-search-icon" aria-hidden="true" />
+          <input
+            id="conversation-search"
+            type="search"
+            placeholder="Search"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+        </div>
+        <button type="button" className="top-nav-icon top-nav-primary" onClick={() => setShowImportModal(true)} aria-label="Import conversations" title="Import conversations (Ctrl+I)">
+          <Upload size={18} />
+        </button>
+        <button type="button" className="top-nav-icon" onClick={() => setShowSettingsModal(true)} aria-label="Open import and export settings" title="Settings (Ctrl+,)">
+          <Settings size={18} />
+        </button>
+      <div className="theme-palette-wrapper">
+        <button
+          ref={paletteTriggerRef}
+          className="theme-palette-btn"
+          aria-haspopup="menu"
+          aria-controls={paletteOpen ? "theme-palette-menu" : undefined}
+          onClick={() => paletteOpen ? dismissPalette() : setPaletteOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              setPaletteOpen(true);
+            }
+          }}
+          title="Choose theme"
+          aria-label={`Choose theme. Current: ${currentThemeLabel}`}
+          aria-expanded={paletteOpen}
+        >
+          <Palette size={18} />
+          <span className="theme-palette-label">Theme</span>
+        </button>
+        {paletteOpen && (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+              data-testid="theme-palette-backdrop"
+              onClick={() => dismissPalette()}
+            />
+            <div
+              ref={paletteMenuRef}
+              id="theme-palette-menu"
+              className="theme-palette-menu"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  dismissPalette();
+                } else if (e.key === "Tab") {
+                  dismissPalette(false);
+                } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+                  e.preventDefault();
+                  const options = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+                  const index = options.findIndex(option => option === document.activeElement);
+                  const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1
+                    : (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+                  options[next]?.focus();
+                }
+              }}
+              role="menu"
+              aria-label="Theme palette"
+              style={{ zIndex: 501 }}
+            >
+              <div className="theme-palette-heading" role="presentation">
+                <span>Archive atmosphere</span>
+                <strong>{currentThemeLabel}</strong>
+              </div>
+              {THEMES.map(t => (
+                <button
+                  key={t.id}
+                  className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                  onClick={() => { setTheme(t.id); dismissPalette(); }}
+                  tabIndex={-1}
+                  role="menuitemradio"
+                  aria-label={t.label}
+                  aria-checked={theme === t.id}
+                >
+                  <span className="theme-swatch" style={{ background: t.swatch }} />
+                  <span className="theme-option-copy">
+                    <span className="theme-option-name">{t.label}</span>
+                    <span className="theme-option-mood">{t.mood}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      </nav>
+    <div className={`app-container${timelineView ? ' timeline-active' : ''}${fullWidthConvo && selectedConversationId !== null ? ' sidebar-hidden' : ''}${sidebarPosition === 'right' ? ' sidebar-right' : ''}`}>
       {feedback}
       <div className="theme-transition-wash" key={theme} aria-hidden="true" />
+      {timelineView ? (
+        <main className="timeline-main">
+          <LazyFeature label="timeline">
+            <TimelineScreen
+              rangeEnd={timelineRangeEnd}
+              onRangeEndChange={setTimelineRangeEnd}
+              searchQuery={searchQuery}
+              sourceFilter={sourceFilter}
+              selectedTags={selectedTags}
+              selectedProject={selectedProject}
+              projectLabel={selectedProjectLabel}
+              refreshKey={timelineRefreshKey}
+              onOpenConversation={openFromTimeline}
+              onRemoveTag={handleMultiTagToggle}
+              onClearSource={() => handleSourceFilter("all")}
+              onClearProject={() => handleProjectFilter(null)}
+              onClearSearch={() => handleSearch("")}
+            />
+          </LazyFeature>
+        </main>
+      ) : (<>
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}${isResizing ? ' resizing' : ''}`} style={!sidebarCollapsed ? { '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}>
         <div className="sidebar-header">
@@ -1222,23 +1398,12 @@ export default function App() {
             <div className="sidebar-top">
               <button
                 className={`sidebar-home-btn${!analyticsView && selectedConversationId === null ? " active" : ""}`}
-                onClick={() => { setAnalyticsView(false); clearConversation(); }}
+                onClick={showLibrary}
               >
                 <Home size={14} />
                 Home
               </button>
 
-              <div className="search-box">
-                <label className="sr-only" htmlFor="conversation-search">Search conversations</label>
-                <Search size={16} className="search-icon" />
-                <input
-                  id="conversation-search"
-                  type="text"
-                  placeholder="Search conversations..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                />
-              </div>
 
               <section className="sidebar-panel sidebar-primary-panel">
                 <div className="sidebar-panel-header">
@@ -1467,7 +1632,7 @@ export default function App() {
                 <div className="sidebar-tool-grid">
                   <button
                     className={`sidebar-tool-btn${analyticsView ? " active" : ""}`}
-                    onClick={() => { setAnalyticsView(true); clearConversation(); }}
+                    onClick={showAnalytics}
                   >
                     <BarChart2 size={16} />
                     Analytics
@@ -1750,6 +1915,11 @@ export default function App() {
         <header className="main-header">
           <div className="main-header-top">
             <div className="main-header-leading">
+              {cameFromTimeline && selectedConversationId !== null && (
+                <button className="icon-btn back-to-timeline" onClick={showTimeline} title="Back to Timeline" aria-label="Back to Timeline">
+                  <ArrowLeft size={18} />
+                </button>
+              )}
               <button className="icon-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
                 <Menu size={20} />
               </button>
@@ -2279,17 +2449,14 @@ export default function App() {
           )}
         </div>
       </main>
+      </>)}
 
       {/* Import Modal */}
       {showImportModal && (
         <LazyFeature label="Import Conversations" onClose={() => setShowImportModal(false)}>
           <ImportModal
             onClose={() => setShowImportModal(false)}
-            onSuccess={() => {
-              loadTags();
-              loadProjects();
-              refreshConversationList(1);
-            }}
+            onSuccess={refreshAfterImport}
           />
         </LazyFeature>
       )}
@@ -2301,9 +2468,7 @@ export default function App() {
             onClose={() => setShowSettingsModal(false)}
             onConversationsChanged={() => {
               clearConversation();
-              loadTags();
-              loadProjects();
-              refreshConversationList(1);
+              refreshAfterImport();
             }}
           />
         </LazyFeature>
@@ -2363,81 +2528,7 @@ export default function App() {
         </LazyFeature>
       )}
 
-      <div className="theme-palette-wrapper">
-        <button
-          ref={paletteTriggerRef}
-          className="theme-palette-btn"
-          aria-haspopup="menu"
-          aria-controls={paletteOpen ? "theme-palette-menu" : undefined}
-          onClick={() => paletteOpen ? dismissPalette() : setPaletteOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              e.preventDefault();
-              setPaletteOpen(true);
-            }
-          }}
-          title="Choose theme"
-          aria-label={`Choose theme. Current: ${currentThemeLabel}`}
-          aria-expanded={paletteOpen}
-        >
-          <Palette size={30} />
-          <span className="theme-palette-label">Theme</span>
-        </button>
-        {paletteOpen && (
-          <>
-            <div
-              style={{ position: 'fixed', inset: 0, zIndex: 499 }}
-              data-testid="theme-palette-backdrop"
-              onClick={() => dismissPalette()}
-            />
-            <div
-              ref={paletteMenuRef}
-              id="theme-palette-menu"
-              className="theme-palette-menu"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  dismissPalette();
-                } else if (e.key === "Tab") {
-                  dismissPalette(false);
-                } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
-                  e.preventDefault();
-                  const options = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
-                  const index = options.findIndex(option => option === document.activeElement);
-                  const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1
-                    : (index + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
-                  options[next]?.focus();
-                }
-              }}
-              role="menu"
-              aria-label="Theme palette"
-              style={{ zIndex: 501 }}
-            >
-              <div className="theme-palette-heading" role="presentation">
-                <span>Archive atmosphere</span>
-                <strong>{currentThemeLabel}</strong>
-              </div>
-              {THEMES.map(t => (
-                <button
-                  key={t.id}
-                  className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                  onClick={() => { setTheme(t.id); dismissPalette(); }}
-                  tabIndex={-1}
-                  role="menuitemradio"
-                  aria-label={t.label}
-                  aria-checked={theme === t.id}
-                >
-                  <span className="theme-swatch" style={{ background: t.swatch }} />
-                  <span className="theme-option-copy">
-                    <span className="theme-option-name">{t.label}</span>
-                    <span className="theme-option-mood">{t.mood}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+    </div>
     </div>
   );
 }
