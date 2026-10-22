@@ -78,6 +78,15 @@ function installFetchMock(options: FetchMockOptions = {}) {
       });
     }
 
+    if (url.includes("/stats")) {
+      return jsonResponse({
+        total_conversations: 1123,
+        total_messages: 9000,
+        sources: { chatgpt: 1056, claude: 67 },
+        date_range: { oldest: "2024-01-05T00:00:00Z", newest: new Date().toISOString() },
+      });
+    }
+
     if (url.includes("/settings/supabase-dashboard-url")) {
       return jsonResponse({ configured: false, dashboard_url: null });
     }
@@ -459,13 +468,13 @@ describe("App UI improvements", () => {
     await screen.findByRole("button", { name: "Refactor search filters" });
     const trigger = screen.getByRole("button", { name: /choose theme/i });
     fireEvent.click(trigger);
-    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "Modernist" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
-    expect(screen.getByRole("menuitemradio", { name: "Light" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "End" });
     expect(screen.getByRole("menuitemradio", { name: "Forest" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
-    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toHaveFocus();
+    expect(screen.getByRole("menuitemradio", { name: "Modernist" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -559,7 +568,7 @@ describe("App UI improvements", () => {
     render(<App />);
 
     const paletteButton = await screen.findByRole("button", { name: /choose theme/i });
-    expect(paletteButton).toHaveAccessibleName(/current: dark/i);
+    expect(paletteButton).toHaveAccessibleName(/current: modernist/i);
 
     fireEvent.click(paletteButton);
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Ocean" }));
@@ -633,5 +642,54 @@ describe("App UI improvements", () => {
       fetchMock.mock.calls.some(([url]) => String(url).includes("/import/chatgpt/bundle")),
     ).toBe(true);
     expect(within(dialog).getByRole("button", { name: /done/i })).toBeInTheDocument();
+  });
+
+  it("shows conversations by month on the Timeline and returns there from the reader", async () => {
+    const now = new Date();
+    const thisMonth = { ...baseConversation, id: 1, source: "claude", message_count: 2, created_at: now.toISOString() };
+    const fetchMock = installFetchMock({
+      list: async () => jsonResponse({ items: [thisMonth], total: 1, page: 1, page_size: 100, pages: 1 }),
+    });
+    render(<App />);
+    await screen.findAllByRole("button", { name: /refactor search filters/i });
+
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    const timeline = await screen.findByRole("region", { name: "Timeline" });
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-current", "page");
+    expect(await within(timeline).findByText("1,123")).toBeInTheDocument();
+    expect(within(timeline).getByText("1,056")).toBeInTheDocument();
+
+    const monthName = now.toLocaleDateString("en-US", { month: "long" });
+    const currentHead = within(timeline).getByRole("heading", { name: new RegExp(monthName) }).parentElement!;
+    expect(currentHead).toHaveClass("current");
+    const row = await within(timeline).findByRole("button", { name: /refactor search filters/i });
+    expect(row).toHaveTextContent(/claude · 2 msgs/i);
+    expect(within(timeline).getByRole("button", { name: "Later month" })).toBeDisabled();
+    expect(within(timeline).getAllByText("No conversations").length).toBeGreaterThan(0);
+
+    const timelineRequest = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.includes("date_from") && url.includes("sort_by=created_at"));
+    expect(timelineRequest).toBeDefined();
+
+    fireEvent.click(row);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    fireEvent.click(screen.getByRole("button", { name: "Back to Timeline" }));
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
+  });
+
+  it("removes a shared tag filter from the Timeline chips", async () => {
+    installFetchMock();
+    render(<App />);
+    const tagGroup = await screen.findByRole("group", { name: /filter by tag/i });
+    fireEvent.click(within(tagGroup).getByRole("button", { name: /coding/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    const timeline = await screen.findByRole("region", { name: "Timeline" });
+    expect(within(timeline).getByText(/tagged coding/i)).toBeInTheDocument();
+    fireEvent.click(within(timeline).getByRole("button", { name: "Remove tag filter coding" }));
+    expect(within(timeline).queryByText(/tagged coding/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    const libraryTags = await screen.findByRole("group", { name: /filter by tag/i });
+    expect(within(libraryTags).getByRole("button", { name: /coding/i })).toHaveAttribute("aria-pressed", "false");
   });
 });

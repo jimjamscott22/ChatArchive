@@ -100,11 +100,12 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 
 ### Frontend (`frontend/src/`)
 
+- **Top nav + screens** — `App.tsx` renders a top nav (Library · Timeline · Projects · Analytics, search, import, settings, theme). `components/TimelineScreen.tsx` is the month-by-month Timeline (design: `docs/styles/ChatArchive UI layout options.zip`, option 2c); it shares search/source/tag/project filters with the Library and groups by `created_at` because the backend date filter uses that field.
 - **`App.tsx`** — Single large component (~4000 lines) containing almost all UI: list, viewer, import, tags, projects, search, analytics, export, theme picker.
 - **`api.ts`** — Hardcoded `API_URL = "http://localhost:8000"` plus `apiFetch()` (attaches the Bearer token from `localStorage`).
 - **`main.tsx`** — React 18 mount point.
 - **`components/`** — `ModalShell.tsx` (shared dialog) and `AuthGate.tsx` (token prompt; verifies with `GET /stats`).
-- **`styles.css`** — **Plain hand-written CSS. There is no Tailwind** (no `tailwind` dependency, no `tailwind.config.*`, no PostCSS). Tokens live on `:root` and `[data-theme="..."]` (11 themes). Reuse those variables (`--bg-primary`, `--text-primary`, `--accent`, `--surface-panel`, `--shadow-md`, …); utility classes like `flex gap-4` will silently do nothing.
+- **`styles.css`** — **Plain hand-written CSS. There is no Tailwind** (no `tailwind` dependency, no `tailwind.config.*`, no PostCSS). Tokens live on `:root` and `[data-theme="..."]` (12 themes; Modernist is the default). Reuse those variables (`--bg-primary`, `--text-primary`, `--accent`, `--surface-panel`, `--shadow-md`, …); utility classes like `flex gap-4` will silently do nothing.
 
 Key deps: `react-markdown` + `rehype-highlight` (message rendering), `react-window` (list virtualization), `lucide-react` (icons).
 
@@ -211,7 +212,7 @@ prompts for it once and stores it in the browser's `localStorage`.
   Works in the PyInstaller build only because the bundled backend also listens
   on 8000. All API calls go through `apiFetch()` there, which attaches the
   stored token — don't call raw `fetch()` against `API_URL` from `App.tsx`.
-- **No Tailwind** — see the frontend section. Use the `styles.css` CSS variables, and preserve both the core and semantic token layers for all 11 themes.
+- **No Tailwind** — see the frontend section. Use the `styles.css` CSS variables, and preserve both the core and semantic token layers for all 12 themes.
 - **Root-level `.py` scripts in `backend/`** (`migrate_*.py`, `init_db.py`,
   `check_schema.py`) are one-off migration/inspection utilities, not part of the app.
   Note `init_db.py` exists in three places (`backend/`, `app/database/`, `app/db_scripts/`).
