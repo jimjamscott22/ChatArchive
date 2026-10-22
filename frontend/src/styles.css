@@ -6242,3 +6242,10 @@ dialog.confirmation-modal {
   .top-nav-links { order: 2; flex: 1 1 100%; }
   .top-nav-search { order: 3; }
 }
+
+/* Narrow screens: the sidebar drawer opens below the top nav instead of under it. */
+@media (max-width: 1024px) {
+  .app-shell > .app-container > .sidebar {
+    position: absolute;
+  }
+}
