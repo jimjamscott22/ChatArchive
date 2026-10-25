@@ -276,9 +276,10 @@ export default function App() {
   useEffect(() => {
     if (!authorized || standaloneMode) return;
     // Open the route the page was loaded with (a pasted link or a refresh).
+    // This also runs after unlocking, when the URL may have changed while locked.
     const initial = parseRoute(window.location.hash);
-    if (initial.name === "conversation") loadConversation(initial.id);
-    else routeSynced.current = true;
+    applyRouteRef.current(initial);
+    if (initial.name !== "conversation") routeSynced.current = true;
     const onHashChange = () => applyRouteRef.current(parseRoute(window.location.hash));
     window.addEventListener("hashchange", onHashChange);
     window.addEventListener("popstate", onHashChange);

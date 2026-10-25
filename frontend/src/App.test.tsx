@@ -748,8 +748,29 @@ describe("App UI improvements", () => {
     fireEvent.change(await screen.findByLabelText(/api token/i), { target: { value: "new-token" } });
     expect(window.location.hash).toBe("#/c/1");
 
+    reject = false;
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
     await within(await screen.findByRole("main")).findByRole("heading", { name: "Refactor search filters" });
     expect(window.location.hash).toBe("#/c/1");
+  });
+
+  it("applies a Timeline link changed while locked once the app is unlocked", async () => {
+    window.history.replaceState(null, "", "/#/c/1");
+    let reject = false;
+    installFetchMock({
+      action: (url) => (reject && url.includes("/conversations/search") ? Promise.resolve(jsonResponse({}, { ok: false, status: 401 })) : undefined),
+    });
+    render(<App />);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+
+    reject = true;
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "refactor" } });
+    fireEvent.change(await screen.findByLabelText(/api token/i), { target: { value: "new-token" } });
+    act(() => { window.history.replaceState(null, "", "/#/timeline"); });
+
+    reject = false;
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/timeline");
   });
 });
