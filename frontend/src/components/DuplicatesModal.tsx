@@ -1,6 +1,7 @@
 import useActionFeedback from "./useActionFeedback";
 import { useState, useEffect } from "react";
 import ModalShell from "./ModalShell";
+import SourceIcon from "./SourceIcon";
 import { API_URL, apiFetch } from "../api";
 import type { DuplicateGroup, DuplicatesData } from "../types";
 
@@ -251,7 +252,7 @@ export default function DuplicatesModal({ onClose, onSuccess }: { onClose: () =>
                   >
                   <div className="group-info">
                     <h3>
-                      {getSourceInfo(group.source).icon} {group.title || "Untitled"}
+                      <SourceIcon source={group.source} size={16} /> {group.title || "Untitled"}
                     </h3>
                     <div className="group-meta">
                       <span>{group.count} duplicates</span>

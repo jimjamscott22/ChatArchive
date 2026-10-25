@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, lazy } from "react";
-import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home, ArrowLeft } from "lucide-react";
+import { Sparkles, Upload, Search, Menu, Sun, Moon, MoreVertical, Trash2, Download, Tag, Settings, Copy, Database, ExternalLink, ChevronLeft, ChevronRight, Maximize2, Minimize2, BarChart2, Palette, Home, ArrowLeft, Keyboard, Folder, FolderOpen, MessageSquare, TriangleAlert } from "lucide-react";
 import LazyFeature from "./components/LazyFeature";
 import useActionFeedback from "./components/useActionFeedback";
 import AuthGate from "./components/AuthGate";
+import SourceIcon from "./components/SourceIcon";
 import { formatDateTime, getSourceInfo, orderMessages, type Message } from "./utils/conversationPresentation";
 import { renderHighlightedText } from "./utils/searchHighlight";
 import { API_URL, apiFetch, apiErrorMessage, getToken, setUnauthorizedHandler } from "./api";
@@ -57,6 +58,35 @@ const MODERNIST_ADOPTED_KEY = 'chatarchive-modernist-adopted';
 
 type YearMonth = { year: number; month: number };
 
+// Hash routes keep Back/Forward and shared links working:
+//   #/ (Library) · #/timeline · #/analytics · #/c/123 (a conversation)
+type Route =
+  | { name: "library" }
+  | { name: "timeline" }
+  | { name: "analytics" }
+  | { name: "conversation"; id: number };
+
+function parseRoute(hash: string): Route {
+  const path = hash.replace(/^#\/?/, "");
+  if (path === "timeline") return { name: "timeline" };
+  if (path === "analytics") return { name: "analytics" };
+  const match = path.match(/^c\/(\d+)$/);
+  if (match) {
+    const id = Number.parseInt(match[1], 10);
+    if (id > 0) return { name: "conversation", id };
+  }
+  return { name: "library" };
+}
+
+function routeToHash(route: Route): string {
+  switch (route.name) {
+    case "timeline": return "#/timeline";
+    case "analytics": return "#/analytics";
+    case "conversation": return `#/c/${route.id}`;
+    default: return "#/";
+  }
+}
+
 // Check if we're in standalone conversation view (opened in new window)
 function getInitialConversationId(): number | null {
   const params = new URLSearchParams(window.location.search);
@@ -85,9 +115,9 @@ export default function App() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
-  const [analyticsView, setAnalyticsView] = useState(false);
+  const [analyticsView, setAnalyticsView] = useState(() => parseRoute(window.location.hash).name === "analytics");
   const [analyticsRange, setAnalyticsRange] = useState<"30d" | "all">("all");
-  const [timelineView, setTimelineView] = useState(false);
+  const [timelineView, setTimelineView] = useState(() => parseRoute(window.location.hash).name === "timeline");
   const [cameFromTimeline, setCameFromTimeline] = useState(false);
   const [timelineRangeEnd, setTimelineRangeEnd] = useState<YearMonth>(() => {
     const now = new Date();
@@ -195,6 +225,64 @@ export default function App() {
       localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch { /* ignore */ }
   }, [theme]);
+
+  // Keep the URL hash and the visible screen in sync, in both directions.
+  const currentRoute: Route = timelineView
+    ? { name: "timeline" }
+    : analyticsView
+      ? { name: "analytics" }
+      : selectedConversationId !== null
+        ? { name: "conversation", id: selectedConversationId }
+        : { name: "library" };
+  const currentHash = routeToHash(currentRoute);
+  const routeSynced = useRef(false);
+
+  useEffect(() => {
+    if (!authorized || standaloneMode) return;
+    const normalized = window.location.hash === "" ? "#/" : window.location.hash;
+    if (normalized === currentHash) { routeSynced.current = true; return; }
+    // The first sync only normalizes the URL; later changes add history entries.
+    // Wait for the initial route to be applied before treating a mismatch as navigation.
+    if (!routeSynced.current) return;
+    window.history.pushState(null, "", currentHash);
+  }, [authorized, standaloneMode, currentHash]);
+
+  const applyRouteRef = useRef<(route: Route) => void>(() => {});
+  applyRouteRef.current = (route: Route) => {
+    if (route.name === "timeline") {
+      setAnalyticsView(false);
+      setCameFromTimeline(false);
+      if (selectedConversationId !== null) clearConversation();
+      setTimelineView(true);
+    } else if (route.name === "analytics") {
+      setTimelineView(false);
+      setCameFromTimeline(false);
+      if (selectedConversationId !== null) clearConversation();
+      setAnalyticsView(true);
+    } else if (route.name === "conversation") {
+      if (route.id !== selectedConversationId) loadConversation(route.id);
+    } else {
+      setTimelineView(false);
+      setAnalyticsView(false);
+      setCameFromTimeline(false);
+      if (selectedConversationId !== null) clearConversation();
+    }
+  };
+
+  useEffect(() => {
+    if (!authorized || standaloneMode) return;
+    // Open the route the page was loaded with (a pasted link or a refresh).
+    const initial = parseRoute(window.location.hash);
+    if (initial.name === "conversation") loadConversation(initial.id);
+    else routeSynced.current = true;
+    const onHashChange = () => applyRouteRef.current(parseRoute(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("popstate", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("popstate", onHashChange);
+    };
+  }, [authorized, standaloneMode]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1384,7 +1472,7 @@ export default function App() {
                 aria-label="Open keyboard shortcuts"
                 onClick={() => setShowShortcutsModal(true)}
               >
-                <span className="keyboard-hint">⌨️</span>
+                <Keyboard size={18} aria-hidden="true" />
               </button>
             )}
             <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>
@@ -1453,10 +1541,10 @@ export default function App() {
                     <label htmlFor="source-filter">Filter by source:</label>
                     <select id="source-filter" value={sourceFilter} onChange={(e) => handleSourceFilter(e.target.value)}>
                       <option value="all">All Sources</option>
-                      <option value="chatgpt">💬 ChatGPT</option>
-                      <option value="claude">🤖 Claude</option>
-                      <option value="gemini">✨ Gemini</option>
-                      <option value="copilot">👨‍💻 Copilot</option>
+                      <option value="chatgpt">ChatGPT</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="copilot">Copilot</option>
                     </select>
                   </div>
 
@@ -1498,10 +1586,10 @@ export default function App() {
                       }}
                     >
                       <option value="all">All Projects</option>
-                      <option value="-1">📂 Uncategorized ({uncategorizedCount})</option>
+                      <option value="-1">Uncategorized ({uncategorizedCount})</option>
                       {allProjects.map((project) => (
                         <option key={project.id} value={project.id}>
-                          📁 {project.name} ({project.conversation_count})
+                          {project.name} ({project.conversation_count})
                         </option>
                       ))}
                     </select>
@@ -1579,7 +1667,7 @@ export default function App() {
                         }}
                         title="Uncategorized conversations"
                       >
-                        📂 Uncategorized
+                        <FolderOpen size={14} aria-hidden="true" /> Uncategorized
                       </div>
                       {allProjects.map((project) => (
                         <div
@@ -1710,7 +1798,7 @@ export default function App() {
               </div>
             ) : listError && !hasListResponse ? (
               <div className="empty-state">
-                <div className="empty-icon">⚠️</div>
+                <div className="empty-icon"><TriangleAlert size={32} aria-hidden="true" /></div>
                 <h3>Couldn't load conversations</h3>
                 <p>{listError}</p>
                 <button className="empty-action-btn" onClick={() => refreshConversationList(currentPage)}>
@@ -1719,7 +1807,7 @@ export default function App() {
               </div>
             ) : conversations.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon">💬</div>
+                <div className="empty-icon"><MessageSquare size={32} aria-hidden="true" /></div>
                 <h3>{hasActiveFilters ? "No matching conversations" : "No conversations yet"}</h3>
                 <p>
                   {hasActiveFilters
@@ -1781,7 +1869,7 @@ export default function App() {
                   <div className="card-header">
                     <div className="card-left">
                       <div className="source-avatar" data-source={conv.source}>
-                        {getSourceInfo(conv.source).icon}
+                        <SourceIcon source={conv.source} />
                       </div>
                       <div className="conv-info">
                         <h3 className="conv-title">
@@ -1858,7 +1946,7 @@ export default function App() {
                         }}
                         title={conv.project.description || conv.project.name}
                       >
-                        📁 {conv.project.name}
+                        <Folder size={12} aria-hidden="true" /> {conv.project.name}
                       </button>
                     </div>
                   )}
@@ -2040,7 +2128,7 @@ export default function App() {
           {selectedConversation && (
             <div className="main-header-meta">
               <span className="header-meta-pill source-pill" data-source={selectedConversation.source}>
-                {getSourceInfo(selectedConversation.source).icon} {getSourceInfo(selectedConversation.source).name}
+                <SourceIcon source={selectedConversation.source} size={14} /> {getSourceInfo(selectedConversation.source).name}
               </span>
 
               {selectedConversation.project && (
@@ -2050,7 +2138,7 @@ export default function App() {
                   onClick={() => handleProjectFilter(selectedConversation.project!.id)}
                   title={selectedConversation.project.description || selectedConversation.project.name}
                 >
-                  📁 {selectedConversation.project.name}
+                  <Folder size={12} aria-hidden="true" /> {selectedConversation.project.name}
                 </button>
               )}
 
@@ -2164,7 +2252,7 @@ export default function App() {
                   <div className="overview-chip-list">
                     {supportedSources.map((source) => (
                       <span key={source} className="overview-chip">
-                        {getSourceInfo(source).icon} {getSourceInfo(source).name}
+                        <SourceIcon source={source} size={14} /> {getSourceInfo(source).name}
                       </span>
                     ))}
                     <span className="overview-chip">Local-first archive</span>
@@ -2239,7 +2327,7 @@ export default function App() {
                             {supportedSources.map((source) => (
                               <div key={source} className="overview-source-row">
                                 <span className="overview-source-name">
-                                  <span className="source-indicator">{getSourceInfo(source).icon}</span>
+                                  <span className="source-indicator"><SourceIcon source={source} size={14} /></span>
                                   {getSourceInfo(source).name}
                                 </span>
                                 <strong>Ready</strong>
@@ -2295,7 +2383,7 @@ export default function App() {
                           <article key={conv.id} className="overview-conversation-card">
                             <button className="overview-conversation-main" onClick={() => loadConversation(conv.id)}>
                               <div className="source-avatar" data-source={conv.source}>
-                                {getSourceInfo(conv.source).icon}
+                                <SourceIcon source={conv.source} />
                               </div>
                               <div className="overview-conversation-copy">
                                 <h4>{renderHighlightedText(conv.title || "Untitled", highlightQuery)}</h4>
@@ -2350,7 +2438,7 @@ export default function App() {
                             {sourceBreakdown.map(([source, count]) => (
                               <div key={source} className="overview-source-row">
                                 <span className="overview-source-name">
-                                  <span className="source-indicator">{getSourceInfo(source).icon}</span>
+                                  <span className="source-indicator"><SourceIcon source={source} size={14} /></span>
                                   {getSourceInfo(source).name}
                                 </span>
                                 <strong>{count}</strong>
