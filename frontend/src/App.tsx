@@ -238,7 +238,11 @@ export default function App() {
   const routeSynced = useRef(false);
 
   useEffect(() => {
-    if (!authorized || standaloneMode) return;
+    if (!authorized || standaloneMode) {
+      // Locked (for example after a 401): leave the hash alone and re-apply it once unlocked.
+      routeSynced.current = false;
+      return;
+    }
     const normalized = window.location.hash === "" ? "#/" : window.location.hash;
     if (normalized === currentHash) { routeSynced.current = true; return; }
     // The first sync only normalizes the URL; later changes add history entries.

@@ -733,4 +733,23 @@ describe("App UI improvements", () => {
     expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("keeps the conversation link through a 401 lock and unlock", async () => {
+    window.history.replaceState(null, "", "/#/c/1");
+    let reject = false;
+    installFetchMock({
+      action: (url) => (reject && url.includes("/conversations/search") ? Promise.resolve(jsonResponse({}, { ok: false, status: 401 })) : undefined),
+    });
+    render(<App />);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+
+    reject = true;
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "refactor" } });
+    fireEvent.change(await screen.findByLabelText(/api token/i), { target: { value: "new-token" } });
+    expect(window.location.hash).toBe("#/c/1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    await within(await screen.findByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    expect(window.location.hash).toBe("#/c/1");
+  });
 });
