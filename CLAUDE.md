@@ -101,6 +101,8 @@ Full-stack app: **React + TypeScript** frontend, **FastAPI** backend, **Supabase
 ### Frontend (`frontend/src/`)
 
 - **Top nav + screens** — `App.tsx` renders a top nav (Library · Timeline · Projects · Analytics, search, import, settings, theme). `components/TimelineScreen.tsx` is the month-by-month Timeline (design: `docs/styles/ChatArchive UI layout options.zip`, option 2c); it shares search/source/tag/project filters with the Library and groups by `created_at` because the backend date filter uses that field.
+- **Routing** — hash routes in `App.tsx` (`parseRoute` / `routeToHash`): `#/` Library, `#/timeline`, `#/analytics`, `#/c/<id>` a conversation. State drives the hash (pushState) and `popstate`/`hashchange` drive state, so Back/Forward, refresh and pasted links work. Tests must reset the hash (`history.replaceState`) in `beforeEach`.
+- **Icons** — use Lucide, not emoji. `components/SourceIcon.tsx` maps a source (chatgpt/claude/gemini/copilot) to its icon.
 - **`App.tsx`** — Single large component (~4000 lines) containing almost all UI: list, viewer, import, tags, projects, search, analytics, export, theme picker.
 - **`api.ts`** — Hardcoded `API_URL = "http://localhost:8000"` plus `apiFetch()` (attaches the Bearer token from `localStorage`).
 - **`main.tsx`** — React 18 mount point.

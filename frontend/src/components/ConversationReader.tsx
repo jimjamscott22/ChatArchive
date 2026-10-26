@@ -1,9 +1,11 @@
 import React, { createContext, memo, useContext, useMemo } from "react";
+import { User } from "lucide-react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 
 import ConversationResources from "./ConversationResources";
+import SourceIcon from "./SourceIcon";
 import { formatDateTime, getSourceInfo, orderMessages, type Message } from "../utils/conversationPresentation";
 import { applyHighlightToNode } from "../utils/searchHighlight";
 
@@ -67,10 +69,10 @@ const ConversationReader = memo(function ConversationReader({
             <div className="message-header">
               <div className="message-avatar">
                 {msg.role === "user" ? (
-                  <div className="user-avatar">👤</div>
+                  <div className="user-avatar"><User size={16} aria-hidden="true" /></div>
                 ) : (
                   <div className="assistant-avatar" data-source={source}>
-                    {sourceInfo.icon}
+                    <SourceIcon source={source} size={16} />
                   </div>
                 )}
               </div>

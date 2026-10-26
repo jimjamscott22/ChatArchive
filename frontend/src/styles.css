@@ -6249,3 +6249,113 @@ dialog.confirmation-modal {
     position: absolute;
   }
 }
+
+/* ==========================================================================
+   Modernist Library + reader: flat rows and rules, ink icons, and red kept
+   for the primary action and the active state. Source and tag colors from
+   the other themes become ink outlines here.
+   ========================================================================== */
+[data-theme="modernist"] .sidebar-home-btn {
+  border: 1px solid var(--color-divider);
+  border-style: solid;
+}
+
+[data-theme="modernist"] .sidebar-panel {
+  border-width: 0 0 2px 0;
+  background: transparent;
+}
+
+[data-theme="modernist"] .sidebar-summary-card {
+  background: var(--color-surface);
+}
+
+[data-theme="modernist"] .conversation-card {
+  border-width: 0 0 1px 0;
+  background: transparent;
+}
+
+[data-theme="modernist"] .conversation-card:hover {
+  background: var(--color-surface);
+}
+
+[data-theme="modernist"] .conversation-card.active {
+  background: var(--color-surface);
+  border-color: var(--color-divider);
+  box-shadow: inset 3px 0 0 var(--color-accent) !important;
+}
+
+[data-theme="modernist"] .conv-preview,
+[data-theme="modernist"] .message-role,
+[data-theme="modernist"] .overview-conversation-copy p {
+  font-style: normal;
+}
+
+[data-theme="modernist"] .source-avatar,
+[data-theme="modernist"] .assistant-avatar,
+[data-theme="modernist"] .user-avatar {
+  background: transparent !important;
+  color: var(--color-text);
+  border: 1px solid var(--color-divider);
+}
+
+[data-theme="modernist"] .source-avatar[data-source="claude"],
+[data-theme="modernist"] .assistant-avatar[data-source="claude"] {
+  color: var(--color-accent-700);
+  border-color: var(--color-accent-700);
+}
+
+[data-theme="modernist"] .tag.source,
+[data-theme="modernist"] .source-pill {
+  background: transparent !important;
+  color: var(--color-neutral-700) !important;
+  border: 1px solid var(--color-divider);
+  font-weight: 600;
+}
+
+[data-theme="modernist"] .tag.source[data-source="claude"],
+[data-theme="modernist"] .source-pill[data-source="claude"] {
+  color: var(--color-accent-700) !important;
+}
+
+/* Tag and project colors are user data; show them as ink outlines. */
+[data-theme="modernist"] .tag-badge,
+[data-theme="modernist"] .project-badge,
+[data-theme="modernist"] .project-pill {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-divider) !important;
+}
+
+[data-theme="modernist"] .tag-badge button,
+[data-theme="modernist"] .tag-remove {
+  color: var(--color-text) !important;
+}
+
+/* Only Import is a primary red button. */
+[data-theme="modernist"] .sidebar-tool-btn-accent {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-divider);
+}
+
+[data-theme="modernist"] .sidebar-tool-btn-accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* Reader: a calm reading column with a single red rule for your messages. */
+[data-theme="modernist"] .message-content,
+[data-theme="modernist"] .message-bubble {
+  line-height: 1.65;
+}
+
+[data-theme="modernist"] .user-avatar {
+  color: var(--color-accent);
+}
+
+[data-theme="modernist"] pre {
+  border: 1px solid var(--color-divider);
+}
+
+[data-theme="modernist"] .empty-icon {
+  color: var(--color-neutral-700);
+}

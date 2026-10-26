@@ -156,7 +156,7 @@ export default function ImportModal({ onClose, onSuccess }: { onClose: () => voi
           >
             {Object.entries(sourceInfo).map(([key, info]) => (
               <option key={key} value={key}>
-                {info.icon} {info.name}
+                {info.name}
               </option>
             ))}
           </select>

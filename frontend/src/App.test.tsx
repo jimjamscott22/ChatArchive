@@ -209,6 +209,7 @@ describe("App UI improvements", () => {
       this.open = false;
     });
 
+    window.history.replaceState(null, "", "/");
     localStorage.setItem("chatarchive_api_token", "test-token");
     localStorage.removeItem("chatarchive-theme");
     installFetchMock();
@@ -691,5 +692,85 @@ describe("App UI improvements", () => {
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
     const libraryTags = await screen.findByRole("group", { name: /filter by tag/i });
     expect(within(libraryTags).getByRole("button", { name: /coding/i })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("keeps the URL hash in sync with the screen and responds to Back and deep links", async () => {
+    render(<App />);
+    await screen.findAllByRole("button", { name: /refactor search filters/i });
+    expect(window.location.hash).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    await screen.findByRole("region", { name: "Timeline" });
+    expect(window.location.hash).toBe("#/timeline");
+
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/analytics"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+
+    // A pasted or edited link switches screens without a reload.
+    act(() => { window.location.hash = "#/timeline"; });
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
+
+    act(() => { window.location.hash = "#/"; });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Timeline" })).not.toBeInTheDocument());
+  });
+
+  it("opens a conversation from a #/c/<id> link and records it in the URL", async () => {
+    window.history.replaceState(null, "", "/#/c/1");
+    render(<App />);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    expect(window.location.hash).toBe("#/c/1");
+
+    fireEvent.click(screen.getByRole("button", { name: /home/i }));
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+  });
+
+  it("starts on the Timeline when loaded from #/timeline", async () => {
+    window.history.replaceState(null, "", "/#/timeline");
+    render(<App />);
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps the conversation link through a 401 lock and unlock", async () => {
+    window.history.replaceState(null, "", "/#/c/1");
+    let reject = false;
+    installFetchMock({
+      action: (url) => (reject && url.includes("/conversations/search") ? Promise.resolve(jsonResponse({}, { ok: false, status: 401 })) : undefined),
+    });
+    render(<App />);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+
+    reject = true;
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "refactor" } });
+    fireEvent.change(await screen.findByLabelText(/api token/i), { target: { value: "new-token" } });
+    expect(window.location.hash).toBe("#/c/1");
+
+    reject = false;
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    await within(await screen.findByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+    expect(window.location.hash).toBe("#/c/1");
+  });
+
+  it("applies a Timeline link changed while locked once the app is unlocked", async () => {
+    window.history.replaceState(null, "", "/#/c/1");
+    let reject = false;
+    installFetchMock({
+      action: (url) => (reject && url.includes("/conversations/search") ? Promise.resolve(jsonResponse({}, { ok: false, status: 401 })) : undefined),
+    });
+    render(<App />);
+    await within(screen.getByRole("main")).findByRole("heading", { name: "Refactor search filters" });
+
+    reject = true;
+    fireEvent.change(screen.getByLabelText(/search conversations/i), { target: { value: "refactor" } });
+    fireEvent.change(await screen.findByLabelText(/api token/i), { target: { value: "new-token" } });
+    act(() => { window.history.replaceState(null, "", "/#/timeline"); });
+
+    reject = false;
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("region", { name: "Timeline" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/timeline");
   });
 });
